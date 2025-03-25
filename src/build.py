@@ -200,16 +200,14 @@ Convoy.verbose("Running <bold>CMake</bold> with the following arguments:")
 for arg in cmake_args:
     Convoy.verbose(f"    {arg}")
 
-os.chdir(build_path)
 if not Convoy.run_process_success(
     ["cmake", str(source_path)] + cmake_args,
     stdout=subprocess.DEVNULL if not args.verbose else None,
+    cwd=build_path,
 ):
     Convoy.exit_error("Failed to execute <bold>CMake</bold> command.")
 
 if args.build_command is not None:
-    os.chdir(build_path)
-
     bcmd: list[str] = args.build_command.split(" ")
     Convoy.verbose(
         f"Running build command: <bold>{args.build_command} {' '.join(unknown)}"
@@ -217,6 +215,7 @@ if args.build_command is not None:
     if not Convoy.run_process_success(
         bcmd + unknown,
         stdout=subprocess.DEVNULL if not args.verbose else None,
+        cwd=build_path,
     ):
         Convoy.exit_error(
             f"Failed to execute build command: <bold>{args.build_command}"
