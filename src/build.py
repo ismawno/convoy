@@ -4,7 +4,6 @@ from configparser import ConfigParser
 from convoy import Convoy
 
 import subprocess
-import os
 import sys
 
 
