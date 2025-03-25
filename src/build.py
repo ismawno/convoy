@@ -116,7 +116,7 @@ def parse_arguments(
     return parser.parse_known_args(), custom_vname_map
 
 
-Convoy.log_label = "[BUILD]"
+Convoy.log_label = "BUILD"
 cfg = load_build_ini()
 cmake_vname_map = parse_default_values(cfg)
 (args, unknown), custom_vname_map = parse_arguments(cmake_vname_map)
@@ -128,7 +128,7 @@ if args.build_command is None and unknown:
     )
 
 if unknown:
-    Convoy.log(
+    Convoy.verbose(
         f"Unknown arguments detected: <bold>{' '.join(unknown)}</bold>. These will be forwarded to the build command: <bold>{args.build_command}</bold>."
     )
 
@@ -196,9 +196,9 @@ cmake_args = [f"{argname}={argvalue}" for argname, argvalue in cmake_args.items(
 cmake_args.append(f"-DTOOLKIT_PYTHON_EXECUTABLE={sys.executable}")
 build_path.mkdir(exist_ok=True, parents=True)
 
-Convoy.log("Running <bold>CMake</bold> with the following arguments:")
+Convoy.verbose("Running <bold>CMake</bold> with the following arguments:")
 for arg in cmake_args:
-    Convoy.log(f"    {arg}")
+    Convoy.verbose(f"    {arg}")
 
 os.chdir(build_path)
 if not Convoy.run_process_success(
@@ -211,7 +211,9 @@ if args.build_command is not None:
     os.chdir(build_path)
 
     bcmd: list[str] = args.build_command.split(" ")
-    Convoy.log(f"Running build command: <bold>{args.build_command} {' '.join(unknown)}")
+    Convoy.verbose(
+        f"Running build command: <bold>{args.build_command} {' '.join(unknown)}"
+    )
     if not Convoy.run_process_success(
         bcmd + unknown,
         stdout=subprocess.DEVNULL if not args.verbose else None,
