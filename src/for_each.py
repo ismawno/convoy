@@ -62,6 +62,13 @@ def parse_arguments() -> Namespace:
         default=False,
         help="Print more information.",
     )
+    parser.add_argument(
+        "-n",
+        "--nested",
+        action="store_true",
+        default=False,
+        help="Instead of trying to match directories and commands 1-to-1, apply all commands to all directories.",
+    )
 
     return parser.parse_args()
 
@@ -78,12 +85,13 @@ Convoy.all_yes = args.yes
 Convoy.is_verbose = args.verbose
 cmds: list[str] = args.cmds
 wildcards: list[str] = args.directories
-if len(cmds) == 1:
-    cmds *= len(wildcards)
-if len(cmds) != len(wildcards):
-    Convoy.exit_error(
-        f"The number of commands provided must match the number of directories provided if the former is more than one. Commands: <bold>{', '.join(cmds)} ({len(cmds)})</bold>, Directories: <bold>{', '.join(wildcards)} ({len(wildcards)})</bold>."
-    )
+if not args.nested:
+    if len(cmds) == 1:
+        cmds *= len(wildcards)
+    if len(cmds) != len(wildcards):
+        Convoy.exit_error(
+            f"The number of commands provided must match the number of directories provided if the former is more than one. Commands: <bold>{', '.join(cmds)} ({len(cmds)})</bold>, Directories: <bold>{', '.join(wildcards)} ({len(wildcards)})</bold>."
+        )
 
 wdir = Path.cwd()
 
@@ -109,13 +117,12 @@ def process_directory(path: Path, cmd: str, /) -> None:
         Convoy.verbose(f"<fyellow>Command failed at <underline>{path}</underline>.")
 
 
-for wcard, cmd in zip(wildcards, cmds):
-
+def process_widlcard(wcard: str, cmd: str, /) -> None:
     path = Path(wcard).resolve()
     if path.exists():
         if path.is_dir():
             process_directory(path, cmd)
-            continue
+            return
         Convoy.exit_error(
             f"The only path provided is not a directory: <underline>{path}</underline>"
         )
@@ -126,3 +133,12 @@ for wcard, cmd in zip(wildcards, cmds):
             Convoy.verbose(f"Skipping non-directory: <underline>{path}</underline>")
             continue
         process_directory(path, cmd)
+
+
+if not args.nested:
+    for wcard, cmd in zip(wildcards, cmds):
+        process_widlcard(wcard, cmd)
+else:
+    for wcard in wildcards:
+        for cmd in cmds:
+            process_widlcard(wcard, cmd)
