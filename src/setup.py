@@ -97,6 +97,14 @@ def parse_arguments() -> tuple[Namespace, list[str]]:
         default=None,
         help="Path to the build script to run after the setup. If provided, unknown arguments will be passed to the build script. Default is None.",
     )
+    parser.add_argument(
+        "-f",
+        "--force",
+        "--force-install",
+        action="store_true",
+        default=False,
+        help="Force the installation of dependencies without checking if they are already installed.",
+    )
 
     parser.add_argument(
         "--vulkan-version",
@@ -154,7 +162,12 @@ def step(msg: str, /) -> Callable:
 def validate_arguments() -> None:
     if g_args.safe and g_args.yes:
         Convoy.exit_error(
-            "The <bold>-s</bold> and <bold>-y</bold> flags cannot be used together."
+            "The <bold>--safe</bold> and <bold>--yes</bold> flags cannot be used together."
+        )
+
+    if g_args.force and g_args.uninstall:
+        Convoy.exit_error(
+            "The <bold>--force</bold> flag cannot be used with the <bold>--uninstall</bold> flag. The former is only used to force installations."
         )
 
     if g_args.uninstall and g_args.build_script is not None:
@@ -241,7 +254,7 @@ def validate_operating_system() -> None:
 
 def prompt_to_install(dependency: str, /) -> bool:
     return Convoy.prompt(
-        f"<bold>{dependency}</bold> not found. Do you wish to install?"
+        f"<bold>{dependency}</bold> marked for installation. Do you wish to continue?"
     )
 
 
@@ -306,14 +319,23 @@ def try_uninstall_python_package(package: str, /) -> bool:
     return True
 
 
+def must_install(dependency: str, exists: bool, /) -> bool:
+    if not exists or not g_args.force:
+        return not exists
+
+    Convoy.log(f"Forcing <bold>{dependency}</bold> installation.")
+    return True
+
+
 @step("--Validating python packages--")
 def validate_python_packages(*packages: str) -> None:
 
     needs_restart = False
     for package in packages:
-        exists = is_python_package_installed(package)
-        needs_restart = needs_restart or not exists
-        if not exists and (
+        must = must_install(package, is_python_package_installed(package))
+
+        needs_restart = needs_restart or must
+        if must and (
             not prompt_to_install(package) or not try_install_python_package(package)
         ):
             Convoy.exit_error()
@@ -474,7 +496,7 @@ def validate_linux_devtools() -> None:
         if not prompt_to_install(g_linux_devtools) or not try_install_linux_devtools():
             Convoy.exit_error()
 
-    if not is_linux_devtools_installed():
+    if must_install(g_linux_devtools, is_linux_devtools_installed()):
         install()
 
 
@@ -536,7 +558,9 @@ def validate_xcode_command_line_tools() -> None:
         ):
             Convoy.exit_error()
 
-    if not is_xcode_command_line_tools_installed():
+    if must_install(
+        "Xcode Command Line Tools", is_xcode_command_line_tools_installed()
+    ):
         install()
 
 
@@ -633,7 +657,8 @@ def download_file(url: str, path: Path, /) -> None:
     import requests
     from tqdm import tqdm
 
-    response = requests.get(url, stream=True, allow_redirects=True)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, stream=True, headers=headers, allow_redirects=True)
     total = int(response.headers.get("content-length", 0))
     one_kb = 1024
 
@@ -887,10 +912,10 @@ def validate_vulkan() -> None:
                 Convoy.exit_error()
 
         for dep in g_linux_dependencies:
-            if not is_linux_package_installed(dep):
+            if must_install(dep, is_linux_package_installed(dep)):
                 install_dependency(dep)
 
-    if not is_vulkan_installed() and (
+    if must_install("Vulkan SDK", is_vulkan_installed()) and (
         not prompt_to_install("Vulkan SDK") or not try_install_vulkan()
     ):
         Convoy.exit_error()
@@ -964,7 +989,7 @@ def try_uninstall_homebrew() -> bool:
 
 @step("--Validating Homebrew--")
 def validate_homebrew() -> None:
-    if not is_homebrew_installed() and (
+    if must_install("Homebrew", is_homebrew_installed()) and (
         not prompt_to_install("Homebrew") or not try_install_homebrew()
     ):
         Convoy.exit_error()
@@ -1090,7 +1115,7 @@ def try_uninstall_cmake() -> bool:
 
 @step("--Validating CMake--")
 def validate_cmake() -> None:
-    if not is_cmake_installed() and (
+    if must_install("CMake", is_cmake_installed()) and (
         not prompt_to_install("CMake") or not try_install_cmake()
     ):
         Convoy.exit_error()
