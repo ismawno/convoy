@@ -114,6 +114,20 @@ def parse_arguments() -> tuple[Namespace, list[str]]:
     )
     if Convoy.is_windows:
         parser.add_argument(
+            "--vs",
+            "--visual-studio",
+            action="store_true",
+            default=False,
+            help="Install or uninstall Visual Studio Community Edition.",
+        )
+        parser.add_argument(
+            "--vs-version",
+            "--visual-studio-version",
+            type=str,
+            default="17",
+            help="The Visual Studio version to install. Default is '17'.",
+        )
+        parser.add_argument(
             "--cmake-version",
             type=str,
             default="3.21.3",
@@ -653,17 +667,20 @@ def is_vulkan_installed():
     return False
 
 
-def download_file(url: str, path: Path, /) -> None:
+def download_file(url: str, dest: Path, /) -> None:
     import requests
     from tqdm import tqdm
 
+    Convoy.log(
+        f"Downloading <underline>{url}</underline> into <underline>{dest}</underline>..."
+    )
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, stream=True, headers=headers, allow_redirects=True)
     total = int(response.headers.get("content-length", 0))
     one_kb = 1024
 
-    with open(path, "wb") as f, tqdm(
-        desc=path.name,
+    with open(dest, "wb") as f, tqdm(
+        desc=dest.name,
         total=total,
         unit="MiB",
         unit_scale=True,
@@ -677,6 +694,9 @@ def download_file(url: str, path: Path, /) -> None:
 def extract_file(path: Path, dest: Path, /) -> None:
     dest.mkdir(exist_ok=True)
 
+    Convoy.log(
+        f"Extracting <underline>{path}</underline> into <underline>{dest}</underline>..."
+    )
     if path.suffix == ".zip":
         with zipfile.ZipFile(path, "r") as zip_ref:
             zip_ref.extractall(dest)
@@ -946,6 +966,92 @@ def uninstall_vulkan() -> None:
     try_uninstall_vulkan()
 
 
+def is_visual_studio_installed() -> bool:
+    for p in g_vs_paths:
+        path = p / "Microsoft Visual Studio" / g_vs_year
+        if path.exists():
+            Convoy.log(
+                f"<bold>Visual Studio</bold> found at <underline>{path}</underline>."
+            )
+            return True
+        Convoy.log(
+            f"<fyellow><bold>Visual Studio</bold> not found at <underline>{path}</underline>."
+        )
+
+    return False
+
+
+def look_for_visual_studio_installer() -> Path | None:
+    Convoy.log("Looking for <bold>Visual Studio Installer</bold>...")
+    for p in g_vs_paths:
+        path = p / "Microsoft Visual Studio" / "Installer" / "setup.exe"
+        if path.exists():
+            Convoy.log(
+                f"<bold>Visual Studio Installer</bold> found at <underline>{path}</underline>."
+            )
+            return path
+
+        Convoy.log(
+            f"<fyellow><bold>Visual Studio Installer</bold> not found at <underline>{path}</underline>."
+        )
+    return None
+
+
+def try_install_visual_studio() -> bool:
+    Convoy.log("Installing <bold>Visual Studio</bold>...")
+
+    def install() -> None:
+        input("Press enter to begin the installation...")
+        Convoy.run_file(installer_path)
+        input("Press enter to continue once the installation is complete...")
+
+    installer_path = look_for_visual_studio_installer()
+    if installer_path is not None:
+        install()
+
+    url = f"https://aka.ms/vs/{g_vs_version}/release/vs_installer.exe"
+    installer_path = g_root / "vs_installer.exe"
+
+    download_file(url, installer_path)
+    Convoy.log(
+        "The <bold>Visual Studio installer</bold> will now run. Follow the instructions to install the IDE. Make sure C/C++ and Desktop development with C++ workloads are selected."
+    )
+    install()
+    return True
+
+
+def try_uninstall_visual_studio() -> bool:
+    Convoy.log("Uninstalling <bold>Visual Studio</bold>...")
+    installer_path = look_for_visual_studio_installer()
+    if installer_path is not None:
+        input("Press enter to begin the uninstallation...")
+        Convoy.run_file(installer_path)
+        input("Press enter to continue once the uninstallation is complete...")
+        return True
+
+    return False
+
+
+@step("--Validating Visual Studio--")
+def validate_visual_studio() -> None:
+    if must_install("Visual Studio", is_visual_studio_installed()) and (
+        not prompt_to_install("Visual Studio") or not try_install_visual_studio()
+    ):
+        Convoy.exit_error()
+
+
+@step("--Uninstalling Visual Studio--")
+def uninstall_visual_studio() -> None:
+    if not is_visual_studio_installed():
+        return
+
+    if not prompt_to_uninstall("Visual Studio"):
+        Convoy.log("Skipping uninstallation of <bold>Visual Studio</bold>")
+        return
+
+    try_uninstall_visual_studio()
+
+
 def is_homebrew_installed() -> bool:
     brew_path = shutil.which("brew")
     if brew_path is None:
@@ -1044,9 +1150,9 @@ def try_install_cmake() -> bool:
         installer_url = f"https://github.com/Kitware/CMake/releases/download/v{g_cmake_version}/cmake-{g_cmake_version}-windows-{arch}.msi"
         installer_path = vendor / f"cmake-{g_cmake_version}-windows-{arch}.msi"
 
-        Convoy.log(
-            f"Downloading <bold>CMake</bold> installer from <underline>{installer_url}</underline> into <underline>{installer_path}</underline>"
-        )
+        # Convoy.log(
+        #     f"Downloading <bold>CMake</bold> installer from <underline>{installer_url}</underline> into <underline>{installer_path}</underline>"
+        # )
         download_file(installer_url, installer_path)
         Convoy.log(
             "The <bold>CMake</bold> installer will now run. Please follow the instructions and make sure the <bold>CMake</bold> executable is added to Path."
@@ -1163,7 +1269,26 @@ if Convoy.is_linux:
     g_linux_devtools = None
     g_linux_dependencies = None
 
+
 g_args, g_unknown = parse_arguments()
+if Convoy.is_windows:
+    g_vs_version: str = g_args.vs_version
+    g_vs_year = {
+        "10": "2010",
+        "11": "2012",
+        "12": "2013",
+        "14": "2015",
+        "15": "2017",
+        "16": "2019",
+        "17": "2022",
+    }.get(g_vs_version, None)
+    if g_vs_year is None:
+        Convoy.exit_error(
+            f"Unsupported <bold>Visual Studio</bold> version: {g_vs_version}"
+        )
+    g_vs_paths = [Path("C:\\Program Files"), Path("C:\\Program Files (x86)")]
+
+
 Convoy.log_label = "SETUP"
 Convoy.all_yes = g_args.yes
 Convoy.safe = g_args.safe
@@ -1199,6 +1324,9 @@ if not g_args.uninstall:
 
     if g_args.cmake:
         validate_cmake()
+
+    if Convoy.is_windows and g_args.vs:
+        validate_visual_studio()
 else:
     if Convoy.is_linux and g_args.g_linux_devtools:
         uninstall_linux_devtools()
@@ -1214,6 +1342,9 @@ else:
 
     if g_args.cmake:
         uninstall_cmake()
+
+    if Convoy.is_windows and g_args.vs:
+        uninstall_visual_studio()
 
 if g_args.build_script is not None:
     execute_build_script()
