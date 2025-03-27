@@ -9,6 +9,7 @@ from pathlib import Path
 
 class _Style:
 
+    print("<fyellow>hello this is <bold>my</bold> message")
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
