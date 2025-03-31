@@ -1176,11 +1176,8 @@ def is_homebrew_installed() -> bool:
 def try_install_homebrew() -> bool:
     Convoy.log("Installing <bold>Homebrew</bold>...")
     if not Convoy.run_process_success(
-        [
-            "/bin/bash",
-            "-c",
-            '"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
-        ]
+        '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+        shell=True,
     ):
         Convoy.log("<fyellow>Failed to install <bold>Homebrew</bold>.")
         return False
@@ -1192,11 +1189,8 @@ def try_install_homebrew() -> bool:
 
 def try_uninstall_homebrew() -> bool:
     if not Convoy.run_process_success(
-        [
-            "/bin/bash",
-            "-c",
-            '"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"',
-        ]
+        '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"',
+        shell=True,
     ):
         Convoy.log("<fyellow>Failed to uninstall <bold>Homebrew</bold>.")
         return False
@@ -1238,8 +1232,8 @@ def is_cmake_installed() -> bool:
 def try_install_cmake(version: str | None = None, /) -> bool:
     if Convoy.is_macos:
         Convoy.log("<bold>Homebrew</bold> is needed to install <bold>CMake</bold>.")
-        if is_homebrew_installed() and not (
-            prompt_to_install("Homebrew") or not try_install_homebrew()
+        if not is_homebrew_installed() and (
+            not prompt_to_install("Homebrew") or not try_install_homebrew()
         ):
             return False
 
@@ -1278,8 +1272,8 @@ def try_install_cmake(version: str | None = None, /) -> bool:
 def try_uninstall_cmake() -> bool:
     if Convoy.is_macos:
         Convoy.log("<bold>Homebrew</bold> is needed to uninstall <bold>CMake</bold>.")
-        if is_homebrew_installed() and not (
-            prompt_to_install("Homebrew") or not try_install_homebrew()
+        if not is_homebrew_installed() and (
+            not prompt_to_install("Homebrew") or not try_install_homebrew()
         ):
             return False
 
