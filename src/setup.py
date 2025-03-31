@@ -639,7 +639,9 @@ def try_install_xcode_command_line_tools() -> bool:
         return False
 
     write_install_list("xcode-command-line-tools")
-    Convoy.log("Successfully installed <bold>Xcode Command Line Tools</bold>.")
+    Convoy.empty_prompt(
+        "The <bold>Xcode Command Line Tools</bold> should now have opened. Please follow the instructions to complete the installation. Press any key to continue."
+    )
     return True
 
 
@@ -934,7 +936,7 @@ def try_install_vulkan(version: VulkanVersion, /) -> bool:
         )
         Convoy.run_file(download_path)
         Convoy.empty_prompt(
-            "Press enter to continue once the installation is complete..."
+            "Press any key to continue once the installation is complete..."
         )
         return True
 
@@ -961,7 +963,7 @@ def try_uninstall_vulkan(version: VulkanVersion, /) -> bool:
             )
             return False
 
-        if not Convoy.run_process_success(["rm", "-rf", str(path)]):
+        if not Convoy.run_process_success(["sudo", "rm", "-rf", str(path)]):
             Convoy.log(
                 f"Failed to remove the <bold>Vulkan SDK</bold> at <underline>{path}</underline>."
             )
@@ -974,7 +976,7 @@ def try_uninstall_vulkan(version: VulkanVersion, /) -> bool:
 
     if Convoy.is_linux:
         if not Convoy.run_process_success(
-            ["rm", "-rf", str(g_root / "vendor" / "vulkan-extract")]
+            ["sudo", "rm", "-rf", str(g_root / "vendor" / "vulkan-extract")]
         ):
             Convoy.log(
                 "<fyellow>Failed to remove the extracted <bold>Vulkan SDK</bold>."
@@ -998,7 +1000,7 @@ def try_uninstall_vulkan(version: VulkanVersion, /) -> bool:
         )
         Convoy.run_file(vulkan_uninstall)
         Convoy.empty_prompt(
-            "Press enter to continue once the uninstallation is complete..."
+            "Press any key to continue once the uninstallation is complete..."
         )
 
         if vulkan_sdk.exists() and any(vulkan_sdk.iterdir()):
@@ -1104,7 +1106,7 @@ def try_install_visual_studio(version: str, /) -> bool:
         write_install_list(f"visual-studio = {version}")
         Convoy.run_file(installer_path)
         Convoy.empty_prompt(
-            "Press enter to continue once the installation is complete..."
+            "Press any key to continue once the installation is complete..."
         )
 
     installer_path = look_for_visual_studio_installer()
@@ -1132,7 +1134,7 @@ def try_uninstall_visual_studio() -> bool:
         )
         Convoy.run_file(installer_path)
         Convoy.empty_prompt(
-            "Press enter to continue once the uninstallation is complete..."
+            "Press any key to continue once the uninstallation is complete..."
         )
         return True
 
@@ -1268,7 +1270,7 @@ def try_install_cmake(version: str | None = None, /) -> bool:
         )
         Convoy.run_file(installer_path)
         Convoy.empty_prompt(
-            "Press enter to continue once the installation is complete..."
+            "Press any key to continue once the installation is complete..."
         )
         return True
 
@@ -1433,52 +1435,40 @@ if not g_args.uninstall:
     if Convoy.is_macos and g_args.manage_xcode_command_line_tools:
         validate_xcode_command_line_tools()
 
-    if g_args.manage_vulkan_sdk:
-        version = VulkanVersion(*[int(v) for v in g_args.vulkan_version.split(".")])
-        validate_vulkan(version)
-
     if Convoy.is_macos and g_args.manage_brew:
         validate_homebrew()
 
     if g_args.manage_cmake:
         validate_cmake(g_args.cmake_version if Convoy.is_windows else None)
 
+    if g_args.manage_vulkan_sdk:
+        version = VulkanVersion(*[int(v) for v in g_args.vulkan_version.split(".")])
+        validate_vulkan(version)
+
     if Convoy.is_windows and g_args.manage_visual_studio:
         validate_visual_studio(g_args.visual_studio_version)
 
 elif g_args.ignore_install_list:
-    if Convoy.is_linux and g_args.manage_linux_devtools:
-        uninstall_linux_devtools()
-
-    if Convoy.is_macos and g_args.manage_xcode_command_line_tools:
-        uninstall_xcode_command_line_tools()
 
     if g_args.manage_vulkan_sdk:
         version = VulkanVersion(*[int(v) for v in g_args.vulkan_version.split(".")])
         uninstall_vulkan(version)
-
-    if Convoy.is_macos and g_args.manage_brew:
-        uninstall_homebrew()
 
     if g_args.manage_cmake:
         uninstall_cmake()
 
     if Convoy.is_windows and g_args.manage_visual_studio:
         uninstall_visual_studio(g_args.visual_studio_version)
-else:
-    packages = install_list.packages("linux")
-    if Convoy.is_linux and packages:
-        uninstall_linux_dependencies(packages)
-    elif Convoy.is_linux:
-        Convoy.log("<fyellow>No linux packages found installed by this script.")
 
-    if Convoy.is_macos and install_list.has_dependency("xcode-command-line-tools"):
+    if Convoy.is_linux and g_args.manage_linux_devtools:
+        uninstall_linux_devtools()
+
+    if Convoy.is_macos and g_args.manage_brew:
+        uninstall_homebrew()
+
+    if Convoy.is_macos and g_args.manage_xcode_command_line_tools:
         uninstall_xcode_command_line_tools()
-    elif Convoy.is_macos:
-        Convoy.log(
-            "<fyellow><bold>XCode Command Line Tools</bold> were not installed by this script."
-        )
-
+else:
     if install_list.has_dependency("vulkan-sdk"):
         while True:
             version = install_list.find_version("vulkan-sdk")
@@ -1488,11 +1478,6 @@ else:
             uninstall_vulkan(version)
     else:
         Convoy.log("<fyellow><bold>Vulkan SDK</bold> was not installed by this script")
-
-    if Convoy.is_macos and install_list.has_dependency("homebrew"):
-        uninstall_homebrew()
-    elif Convoy.is_macos:
-        Convoy.log("<fyellow><bold>Homebrew</bold> was not installed by this script.")
 
     if install_list.has_dependency("cmake"):
         uninstall_cmake()
@@ -1508,6 +1493,24 @@ else:
     elif Convoy.is_windows:
         Convoy.log(
             "<fyellow><bold>Visual Studio</bold> was not installed by this script."
+        )
+
+    packages = install_list.packages("linux")
+    if Convoy.is_linux and packages:
+        uninstall_linux_dependencies(packages)
+    elif Convoy.is_linux:
+        Convoy.log("<fyellow>No linux packages found installed by this script.")
+
+    if Convoy.is_macos and install_list.has_dependency("homebrew"):
+        uninstall_homebrew()
+    elif Convoy.is_macos:
+        Convoy.log("<fyellow><bold>Homebrew</bold> was not installed by this script.")
+
+    if Convoy.is_macos and install_list.has_dependency("xcode-command-line-tools"):
+        uninstall_xcode_command_line_tools()
+    elif Convoy.is_macos:
+        Convoy.log(
+            "<fyellow><bold>XCode Command Line Tools</bold> were not installed by this script."
         )
 
 if g_args.build_script is not None:
