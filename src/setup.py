@@ -256,9 +256,16 @@ def validate_arguments() -> None:
 
 @step("--Validating OS--")
 def validate_operating_system() -> None:
-    if not Convoy.is_admin:
-        Convoy.log(
-            "<fyellow><bold>Warning</bold>: This script may require administrative privileges, specially when installing the <bold>Vulkan SDK</bold> or <bold>CMake</bold> on Windows. You may consider executing this script from an elevated terminal."
+    if not Convoy.is_admin and not Convoy.is_macos:
+        Convoy.exit_error(
+            "This script requires administrative privileges to run. Execute it "
+            + "using the <bold>sudo</bold> keyword."
+            if not Convoy.is_windows
+            else "using an elevated shell."
+        )
+    elif Convoy.is_admin and Convoy.is_macos:
+        Convoy.exit_error(
+            "This script must not be explicitly executed with administrative privileges on MacOS (no <bold>sudo</bold> keyword). Such privileges will be requested when necessary. This is because <bold>Homebrew</bold> commands do not support administrative privileges."
         )
 
     os = Convoy.operating_system
@@ -351,7 +358,7 @@ class InstallList:
         versions = []
         for dep in self.dependencies:
             if dep.startswith(f"{dependency} = "):
-                versions.append(dep.split(" = ")[1])
+                versions.append(dep.split(" = ")[1].strip("\n"))
         return versions
 
 
@@ -375,6 +382,9 @@ def write_install_list(dependency: str, /) -> None:
         text = f.read() if exists else ""
         if dependency not in text:
             f.write(f"{dependency}\n")
+
+    global g_needs_restart
+    g_needs_restart = True
 
 
 @step("--Validating python version--")
@@ -458,7 +468,7 @@ def validate_python_packages(*packages: str) -> None:
         Convoy.log(
             "Packages were installed. Re-run the script for the changes to take effect."
         )
-        Convoy.exit_ok("<bold>RE-RUN REQUIRED</bold>.")
+        Convoy.exit_restart()
 
     Convoy.log("All python packages found.")
 
@@ -531,18 +541,13 @@ def linux_install_package(
     success = False
 
     if g_linux_distro == "ubuntu":
-        if ubuntu_update and not Convoy.run_process_success(
-            ["sudo", "apt-get", "update"]
-        ):
+        if ubuntu_update and not Convoy.run_process_success(["apt-get", "update"]):
             Convoy.log("<fyellow>Failed to update apt-get")
-        success = Convoy.run_process_success(
-            ["sudo", "apt-get", "install", "-y", package]
-        )
+        success = Convoy.run_process_success(["apt-get", "install", "-y", package])
 
     if g_linux_distro == "fedora":
         success = Convoy.run_process_success(
             [
-                "sudo",
                 "dnf",
                 "install" if not group_install else "groupinstall",
                 "-y",
@@ -550,9 +555,7 @@ def linux_install_package(
             ]
         )
     if g_linux_distro == "arch":
-        success = Convoy.run_process_success(
-            ["sudo", "pacman", "-S", "--noconfirm", package]
-        )
+        success = Convoy.run_process_success(["pacman", "-S", "--noconfirm", package])
 
     if success:
         write_install_list(f"linux-package: {package}")
@@ -569,12 +572,11 @@ def linux_uninstall_package(package: str, /, *, group_remove: str = False) -> bo
 
     if g_linux_distro == "ubuntu":
         success = Convoy.run_process_success(
-            ["sudo", "apt-get", "remove", "--purge", "-y", package]
-        ) and Convoy.run_process_success(["sudo", "apt-get", "autoremove", "-y"])
+            ["apt-get", "remove", "--purge", "-y", package]
+        ) and Convoy.run_process_success(["apt-get", "autoremove", "-y"])
     if g_linux_distro == "fedora":
         success = Convoy.run_process_success(
             [
-                "sudo",
                 "dnf",
                 "remove" if not group_remove else "groupremove",
                 "-y",
@@ -582,9 +584,7 @@ def linux_uninstall_package(package: str, /, *, group_remove: str = False) -> bo
             ]
         )
     if g_linux_distro == "arch":
-        success = Convoy.run_process_success(
-            ["sudo", "pacman", "-Rns", "--noconfirm", package]
-        )
+        success = Convoy.run_process_success(["pacman", "-Rns", "--noconfirm", package])
 
     if success:
         Convoy.log(f"Successfully uninstalled <bold>{package}</bold>.")
@@ -1066,7 +1066,7 @@ def try_uninstall_vulkan(version: VulkanVersion, /) -> bool:
         Convoy.log(
             f"<bold>Vulkan SDK</bold> uninstaller found at <underline>{uninstall}</underline>."
         )
-        if not Convoy.run_process_success(["sudo", str(uninstall)]):
+        if not Convoy.run_process_success(["sudo", "/bin/bash", str(uninstall)]):
             Convoy.log(
                 f"<fyellow>Failed to run the <bold>Vulkan SDK</bold> uninstaller at <underline>{uninstall}</underline>"
             )
@@ -1581,6 +1581,7 @@ def execute_build_script() -> None:
 
 
 Convoy.log_label = "SETUP"
+g_needs_restart = False
 g_root = Path(__file__).parent.resolve()
 g_args, g_unknown = parse_arguments()
 validate_arguments()
@@ -1715,6 +1716,17 @@ else:
         Convoy.log(
             "<fyellow><bold>XCode Command Line Tools</bold> were not installed by this script."
         )
+
+if g_needs_restart:
+    Convoy.log(
+        "Dependencies were installed. Re-run the setup for the changes to take effect."
+    )
+    if g_args.build_script is not None:
+        Convoy.log(
+            "<fyellow>Build script execution was aborted because of the dependency changes."
+        )
+
+    Convoy.exit_restart()
 
 if g_args.build_script is not None:
     execute_build_script()
