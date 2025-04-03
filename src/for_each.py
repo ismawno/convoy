@@ -112,9 +112,11 @@ def process_directory(path: Path, cmd: str, /) -> None:
     if not Convoy.run_process_success(cmd, cwd=path, shell=True):
         if not args.ignore_cmd_errors:
             Convoy.exit_error(
-                f"Failed to execute command at <underline>{path}</underline>."
+                f"Failed to execute command <bold>{cmd}</bold> at <underline>{path}</underline>."
             )
-        Convoy.verbose(f"<fyellow>Command failed at <underline>{path}</underline>.")
+        Convoy.verbose(
+            f"<fyellow>Command <bold>{cmd}</bold> failed at <underline>{path}</underline>."
+        )
 
 
 def process_widlcard(wcard: str, cmd: str, /) -> None:
