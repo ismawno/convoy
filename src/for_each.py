@@ -1,6 +1,6 @@
 from argparse import ArgumentParser, Namespace
-from convoy import Convoy
 from pathlib import Path
+from convoy import Convoy
 
 
 def parse_arguments() -> Namespace:

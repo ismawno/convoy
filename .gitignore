@@ -8,7 +8,7 @@ __pycache__/
 
 for-each.sh
 install-list.txt
-src/vendor
+vendor/
 
 # Distribution / packaging
 .Python
