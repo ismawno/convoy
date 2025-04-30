@@ -471,7 +471,7 @@ with cpp.scope("namespace VKit", indent=0):
         code(fn.as_fn_pointer_declaration(modifier="static", null=True))
         with code.scope(fn.as_string(vk_prefix=False, semicolon=False, noexcept=True)):
             code(
-                f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", TKit::{fn.name});'
+                f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", VKit::{fn.name});'
             )
             if fn.return_type != "void":
                 code(f"return fn({', '.join(fn.params)});")
