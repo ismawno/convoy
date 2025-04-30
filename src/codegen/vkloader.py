@@ -495,11 +495,11 @@ with cpp.scope("namespace VKit", indent=0):
     with cpp.scope():
         cpp("#if defined(TKIT_OS_APPLE) || defined(TKIT_OS_LINUX)", indent=0)
         cpp(
-            's_vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(p_Library, "vkGetInstanceProcAddr"));'
+            'vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(p_Library, "vkGetInstanceProcAddr"));'
         )
         cpp("#else", indent=0)
         cpp(
-            's_vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(p_Library, "vkGetInstanceProcAddr"));'
+            'vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(p_Library, "vkGetInstanceProcAddr"));'
         )
         cpp("#endif", indent=0)
 
@@ -514,7 +514,7 @@ with cpp.scope("namespace VKit", indent=0):
             guards = fn.parse_guards()
             guard_if_needed(
                 cpp,
-                f'{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(s_vkGetInstanceProcAddr(VK_NULL_HANDLE, "{fn.name}"));',
+                f'{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "{fn.name}"));',
                 guards,
             )
     cpp.spacing()
@@ -528,7 +528,7 @@ with cpp.scope("namespace VKit", indent=0):
             guards = fn.parse_guards()
             guard_if_needed(
                 cpp,
-                f'functions.{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(s_vkGetInstanceProcAddr(p_Instance, "{fn.name}"));',
+                f'functions.{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(p_Instance, "{fn.name}"));',
                 guards,
             )
         cpp("return functions;")
@@ -542,7 +542,7 @@ with cpp.scope("namespace VKit", indent=0):
             guards = fn.parse_guards()
             guard_if_needed(
                 cpp,
-                f'functions.{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(s_vkGetInstanceProcAddr(p_Device, "{fn.name}"));',
+                f'functions.{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(p_Device, "{fn.name}"));',
                 guards,
             )
         cpp("return functions;")
