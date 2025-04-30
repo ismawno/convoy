@@ -348,7 +348,6 @@ macro = Macro(
     f"{args.group_macro}_END",
 )
 
-path = output.parent
 with ffile.open("r") as f:
 
     def remove_comments(text: str, /) -> str:
@@ -367,70 +366,69 @@ with ffile.open("r") as f:
         sys.exit()
     classes = parse_classes_in_file(content.splitlines())
 
-cpp = CPPFile(args.output.name)
-cpp(f'#include "{ffile.resolve()}"')
-cpp('#include "tkit/container/array.hpp"')
-cpp('#include "tkit/reflection/reflect.hpp"')
-cpp('#include "tkit/utils/concepts.hpp"')
-cpp(f"#include <tuple>")
+hpp = CPPFile(output.name)
+hpp.disclaimer("reflect.py")
+hpp.include(ffile.resolve(), quotes=True)
+hpp.include("tkit/container/array.hpp", quotes=True)
+hpp.include("tkit/reflection/reflect.hpp", quotes=True)
+hpp.include("tkit/utils/concepts.hpp", quotes=True)
+hpp.include("tuple")
 
-with cpp.scope("namespace TKit", indent=False):
+with hpp.scope("namespace TKit", indent=0):
     for cls in classes:
         for namespace in cls.namespaces:
             if namespace != "TKit":
-                cpp(f"using namespace {namespace};")
+                hpp(f"using namespace {namespace};")
 
-        with cpp.scope(
+        with hpp.scope(
             f"template <{cls.template_decl if cls.template_decl is not None else ''}> class Reflect<{cls.name}>",
-            semicolon=True,
+            closer="};",
         ):
-            cpp("public:")
-            cpp("static constexpr bool Implemented = true;")
-            with cpp.scope("enum class FieldVisibility : u8", semicolon=True):
-                cpp("Private = 0,")
-                cpp("Protected = 1,")
-                cpp("Public = 2")
+            hpp("public:")
+            hpp("static constexpr bool Implemented = true;")
+            with hpp.scope("enum class FieldVisibility : u8", closer="};"):
+                hpp("Private = 0,")
+                hpp("Protected = 1,")
+                hpp("Public = 2")
 
             def generate_reflect_body(
                 fcollection: FieldCollection, /, *, is_static: bool
             ) -> None:
                 static = "Static" if is_static else ""
 
-                cpp("public:")
+                hpp("public:")
                 dtype = "u8" if len(cls.nstatic.per_group) < 256 else "u16"
                 if fcollection.per_group:
-                    with cpp.scope(
-                        f"enum class {static}Group : {dtype}", semicolon=True
-                    ):
+                    with hpp.scope(f"enum class {static}Group : {dtype}", closer="};"):
                         for i, group in enumerate(fcollection.per_group):
-                            cpp(f"{group} = {i},")
+                            hpp(f"{group} = {i},")
 
-                with cpp.scope(
-                    f"template <typename T> struct {static}Field", semicolon=True
+                with hpp.scope(
+                    f"template <typename T> struct {static}Field", closer="};"
                 ):
-                    cpp("using Type = T;")
-                    cpp("const char *Name;")
-                    cpp("const char *TypeString;")
+                    hpp("using Type = T;")
+                    hpp("const char *Name;")
+                    hpp("const char *TypeString;")
                     if is_static:
-                        cpp("T *Pointer;")
+                        hpp("T *Pointer;")
                     else:
-                        cpp(f"T {cls.name}::* Pointer;")
-                    cpp("FieldVisibility Visibility;")
+                        hpp(f"T {cls.name}::* Pointer;")
+                    hpp("FieldVisibility Visibility;")
 
                     if not is_static:
-                        with cpp.scope(
+                        with hpp.scope(
                             f"T &Get({cls.name} &p_Instance) const noexcept"
                         ):
-                            cpp("return p_Instance.*Pointer;")
-                        with cpp.scope(
+                            hpp("return p_Instance.*Pointer;")
+                        with hpp.scope(
                             f"const T &Get(const {cls.name} &p_Instance) const noexcept"
                         ):
-                            cpp("return p_Instance.*Pointer;")
+                            hpp("return p_Instance.*Pointer;")
 
-                        with cpp.scope(
+                        with hpp.scope(
                             f"template <std::convertible_to<T> U> void Set({cls.name} &p_Instance, U &&p_Value) const noexcept"
                         ):
-                            cpp("p_Instance.*Pointer = std::forward<U>(p_Value);")
+                            hpp("p_Instance.*Pointer = std::forward<U>(p_Value);")
 
                 def create_cpp_fields_sequence(
                     fields: list[Field], /, *, group: str | None = None
@@ -458,41 +456,41 @@ with cpp.scope("namespace TKit", indent=False):
                     fields: list[str], /, *, group: str = ""
                 ) -> None:
                     fields_cpp = create_cpp_fields_sequence(fields)
-                    with cpp.scope(
+                    with hpp.scope(
                         f"template <typename... Args> static constexpr auto Get{static}{group}Fields() noexcept"
                     ):
-                        with cpp.scope(
-                            "if constexpr (sizeof...(Args) == 0)", curlies=False
+                        with hpp.scope(
+                            "if constexpr (sizeof...(Args) == 0)", delimiters=False
                         ):
-                            cpp(f"return {create_tuple_sequence(fields_cpp)};")
-                        with cpp.scope(
+                            hpp(f"return {create_tuple_sequence(fields_cpp)};")
+                        with hpp.scope(
                             "else if constexpr (sizeof...(Args) == 1)",
-                            curlies=False,
+                            delimiters=False,
                         ):
-                            cpp(f"return get{static}{group}Array<Args...>();")
-                        with cpp.scope("else", curlies=False):
-                            cpp(
+                            hpp(f"return get{static}{group}Array<Args...>();")
+                        with hpp.scope("else", delimiters=False):
+                            hpp(
                                 f"return std::tuple_cat(get{static}{group}Tuple<Args>()...);"
                             )
 
                 def create_for_each_method(*, group: str = "") -> None:
-                    with cpp.scope(
+                    with hpp.scope(
                         f"template <typename... Args, typename F> static constexpr void ForEach{static}{group}Field(F &&p_Fun) noexcept"
                     ):
-                        cpp(f"const auto fields = Get{static}{group}Fields<Args...>();")
-                        cpp(f"ForEach{static}Field(fields, std::forward<F>(p_Fun));")
+                        hpp(f"const auto fields = Get{static}{group}Fields<Args...>();")
+                        hpp(f"ForEach{static}Field(fields, std::forward<F>(p_Fun));")
 
-                with cpp.scope(
+                with hpp.scope(
                     f"template <typename T, typename F> static constexpr void For{static}EachField(const T &p_Fields, F &&p_Fun) noexcept"
                 ):
-                    with cpp.scope("if constexpr (Iterable<T>)", curlies=False):
-                        with cpp.scope(
+                    with hpp.scope("if constexpr (Iterable<T>)", delimiters=False):
+                        with hpp.scope(
                             "for (const auto &field : p_Fields)",
-                            curlies=False,
+                            delimiters=False,
                         ):
-                            cpp("std::forward<F>(p_Fun)(field);")
-                    with cpp.scope("else", curlies=False):
-                        cpp(
+                            hpp("std::forward<F>(p_Fun)(field);")
+                    with hpp.scope("else", delimiters=False):
+                        hpp(
                             "std::apply([&p_Fun](const auto &...p_Field) {(std::forward<F>(p_Fun)(p_Field), ...);}, p_Fields);"
                         )
 
@@ -500,33 +498,33 @@ with cpp.scope("namespace TKit", indent=False):
                 create_for_each_method()
 
                 if fcollection.per_group:
-                    with cpp.scope(
+                    with hpp.scope(
                         f"template <Group G, typename... Args> static constexpr auto Get{static}FieldsByGroup() noexcept"
                     ):
                         cnd = "if"
                         for group in fcollection.per_group:
-                            with cpp.scope(
+                            with hpp.scope(
                                 f"{cnd} constexpr (G == {static}Group::{group})",
-                                curlies=False,
+                                delimiters=False,
                             ):
-                                cpp(f"return Get{static}{group}Fields<Args...>();")
+                                hpp(f"return Get{static}{group}Fields<Args...>();")
                             cnd = "else if"
 
-                        with cpp.scope(
+                        with hpp.scope(
                             "else if constexpr (sizeof...(Args) == 1)",
-                            curlies=False,
+                            delimiters=False,
                         ):
-                            cpp(f"return Array<{static}Field<Args...>, 0>{{}};")
-                        with cpp.scope("else", curlies=False):
-                            cpp("return std::tuple{};")
+                            hpp(f"return Array<{static}Field<Args...>, 0>{{}};")
+                        with hpp.scope("else", delimiters=False):
+                            hpp("return std::tuple{};")
 
-                    with cpp.scope(
+                    with hpp.scope(
                         f"template <Group G, typename... Args, typename F> static constexpr void ForEach{static}FieldByGroup(F &&p_Fun) noexcept"
                     ):
-                        cpp(
+                        hpp(
                             f"const auto fields = Get{static}FieldsByGroup<G, Args...>();"
                         )
-                        cpp(f"ForEach{static}Field(fields, std::forward<F>(p_Fun));")
+                        hpp(f"ForEach{static}Field(fields, std::forward<F>(p_Fun));")
 
                 for group, fields in fcollection.per_group.items():
                     create_get_fields_method(fields, group=group)
@@ -544,20 +542,20 @@ with cpp.scope("namespace TKit", indent=False):
                         fields_cpp = create_cpp_fields_sequence(fields, group=group)
                         if not fields_cpp:
                             continue
-                        with cpp.scope(
+                        with hpp.scope(
                             f"{cnd} constexpr (std::is_same_v<T, {vtype}>)",
-                            curlies=False,
+                            delimiters=False,
                         ):
-                            cpp(f"return {seq_creator(fields_cpp, vtype=vtype)};")
+                            hpp(f"return {seq_creator(fields_cpp, vtype=vtype)};")
                         cnd = "else if"
                     if cnd == "else if":
-                        with cpp.scope("else", curlies=False):
-                            cpp(f"return {null};")
+                        with hpp.scope("else", delimiters=False):
+                            hpp(f"return {null};")
                     else:
-                        cpp(f"return {null};")
+                        hpp(f"return {null};")
 
                 def create_get_tuple_method(*, group: str | None = None) -> None:
-                    with cpp.scope(
+                    with hpp.scope(
                         f"template <typename T> static constexpr auto get{static}{group if group is not None else ''}Tuple() noexcept"
                     ):
                         create_if_constexpr_per_type(
@@ -565,7 +563,7 @@ with cpp.scope("namespace TKit", indent=False):
                         )
 
                 def create_get_array_method(*, group: str | None = None) -> None:
-                    with cpp.scope(
+                    with hpp.scope(
                         f"template <typename T> static constexpr auto get{static}{group if group is not None else ''}Array() noexcept"
                     ):
                         create_if_constexpr_per_type(
@@ -574,7 +572,7 @@ with cpp.scope("namespace TKit", indent=False):
                             group=group,
                         )
 
-                cpp("private:")
+                hpp("private:")
                 create_get_array_method()
                 create_get_tuple_method()
                 for group in fcollection.per_group:
@@ -584,6 +582,6 @@ with cpp.scope("namespace TKit", indent=False):
             generate_reflect_body(cls.nstatic, is_static=False)
             generate_reflect_body(cls.static, is_static=True)
 
-cpp.write(path)
+hpp.write(output.parent)
 
 Convoy.exit_ok()
