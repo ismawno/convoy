@@ -56,6 +56,12 @@ def parse_arguments() -> Namespace:
         help="If set, the generated code will be guarded by extension macros when necessary.",
     )
     parser.add_argument(
+        "--export-timeline",
+        type=Path,
+        default=None,
+        help="The path where a small .txt will be exported alongside the generated code with information about when/by which extension a function/type was added. If not provided, the timeline will not be exported.",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -111,6 +117,17 @@ class Parameter:
         if self.array is not None:
             return f"{self.tp} {self.name}{self.array}"
         return f"{self.tp} {self.name}"
+
+
+@dataclass
+class Type:
+    name: str
+    available_since: str | None = None
+    guards: list[GuardGroup] = field(default_factory=list)
+
+    def parse_guards(self) -> str:
+        guards = [g.parse_guards() for g in self.guards]
+        return " || ".join([f"({g})" if "&&" in g else g for g in guards if g]).strip()
 
 
 @dataclass
@@ -253,81 +270,122 @@ for h in root.findall("types/type[@category='handle']"):
 
 functions: dict[str, Function] = {}
 
-for command in root.findall("commands/command"):
-    proto = command.find("proto")
-    if proto is None:
-        continue
 
-    name = proto.find("name").text
-    return_type = proto.find("type").text
+def parse_commands(*, alias_sweep: bool) -> None:
+    for command in root.findall("commands/command"):
+        alias = command.get("alias")
+        if alias_sweep and alias is None:
+            continue
 
-    api = command.get("api")
-    if api is not None and vulkan_api not in api.split(","):
-        continue
+        if alias_sweep:
+            name = command.get("name")
+            if name in functions:
+                continue
 
-    params: list[Parameter] = []
-    for param in command.findall("param"):
-        api = param.get("api")
+            fn = copy.deepcopy(functions[alias])
+            fn.name = name
+            for i, param in enumerate(fn.params):
+                fntp = param.tp
+                clean_fntp = (
+                    fntp.replace("const", "")
+                    .replace("*", "")
+                    .replace("struct", "")
+                    .strip()
+                )
+                if clean_fntp not in type_aliases:
+                    continue
+
+                tpal = type_aliases[clean_fntp]
+                closest = difflib.get_close_matches(name, tpal, n=1, cutoff=0.0)[0]
+                fn.params[i].tp = fntp.replace(clean_fntp, closest)
+
+            functions[name] = fn
+
+        if alias is not None:
+            continue
+
+        proto = command.find("proto")
+        name = proto.find("name").text
+        return_type = proto.find("type").text
+
+        api = command.get("api")
         if api is not None and vulkan_api not in api.split(","):
             continue
 
-        param_name = param.find("name").text
-        full = "".join(param.itertext()).strip()
-        param_type = full.rsplit(param_name, 1)[0].strip()
+        params: list[Parameter] = []
+        for param in command.findall("param"):
+            api = param.get("api")
+            if api is not None and vulkan_api not in api.split(","):
+                continue
 
-        idx1 = full.find("[")
-        idx2 = full.find("]")
+            param_name = param.find("name").text
+            full = "".join(param.itertext()).strip()
+            param_type = full.rsplit(param_name, 1)[0].strip()
 
-        p = Parameter(
-            param_name,
-            param_type,
-            full[idx1 : idx2 + 1].strip() if idx1 != -1 and idx2 != -1 else None,
+            idx1 = full.find("[")
+            idx2 = full.find("]")
+
+            p = Parameter(
+                param_name,
+                param_type,
+                full[idx1 : idx2 + 1].strip() if idx1 != -1 and idx2 != -1 else None,
+            )
+            params.append(p)
+
+        fn = Function(
+            name,
+            return_type,
+            params,
+            params and params[0].tp in dispatchables,
         )
-        params.append(p)
+        functions[name] = fn
+        Convoy.verbose(f"Parsed vulkan function <bold>{fn.as_string()}</bold>.")
 
-    fn = Function(
-        name,
-        return_type,
-        params,
-        params and params[0].tp in dispatchables,
-    )
-    functions[name] = fn
-    Convoy.verbose(f"Parsed vulkan function <bold>{fn.as_string()}</bold>.")
 
+types: dict[str, Type] = {}
 type_aliases: dict[str, list[str]] = {}
-for tp in root.findall("types/type"):
-    alias = tp.get("alias")
-    if alias is None:
-        continue
-    name = tp.get("name")
 
-    type_aliases.setdefault(alias, []).append(name)
 
-for command in root.findall("commands/command"):
-    alias = command.get("alias")
-    if alias is None:
-        continue
-
-    name = command.get("name")
-    if name in functions:
-        continue
-
-    fn = copy.deepcopy(functions[alias])
-    fn.name = name
-    for i, param in enumerate(fn.params):
-        fntp = param.tp
-        clean_fntp = (
-            fntp.replace("const", "").replace("*", "").replace("struct", "").strip()
-        )
-        if clean_fntp not in type_aliases:
+def parse_types(lookup: str, /, *, alias_sweep: bool) -> None:
+    for tp in root.findall(lookup):
+        alias = tp.get("alias")
+        if alias_sweep and alias is None:
             continue
 
-        tpal = type_aliases[clean_fntp]
-        closest = difflib.get_close_matches(name, tpal, n=1, cutoff=0.0)[0]
-        fn.params[i].tp = fntp.replace(clean_fntp, closest)
+        if alias_sweep:
+            name = tp.get("name")
+            if name in types:
+                continue
 
-    functions[name] = fn
+            type_aliases.setdefault(alias, []).append(name)
+            t = copy.deepcopy(types[alias])
+            t.name = name
+            types[name] = t
+            Convoy.verbose(
+                f"Parsed vulkan type <bold>{name}</bold> as an alias of <bold>{alias}</bold>."
+            )
+            continue
 
+        if alias is not None:
+            continue
+
+        name = tp.get("name")
+        if name is None:
+            name = tp.find("name").text
+
+        types[name] = Type(name)
+        Convoy.verbose(f"Parsed vulkan type <bold>{name}</bold>.")
+
+
+parse_types("types/type", alias_sweep=False)
+parse_types("enums/enum", alias_sweep=False)
+parse_types("types/type", alias_sweep=True)
+parse_types("enums/enum", alias_sweep=True)
+
+parse_commands(alias_sweep=False)
+parse_commands(alias_sweep=True)
+
+Convoy.log(f"Found <bold>{len(types)}</bold> types in the vk.xml file.")
 Convoy.log(
     f"Found <bold>{len(functions)}</bold> {vulkan_api} functions in the vk.xml file."
 )
@@ -337,8 +395,6 @@ for feature in root.findall("feature"):
     version = feature.get("name")
 
     for require in feature.findall("require"):
-
-        types = require.findall("type")
         for command in require.findall("command"):
             fname = command.get("name")
             fn = functions[fname]
@@ -355,6 +411,24 @@ for feature in root.findall("feature"):
             fn.guards.append(guards)
             Convoy.verbose(
                 f"Registered availability of function <bold>{fname}</bold> from the <bold>{version}</bold> feature."
+            )
+
+        for tp in require.findall("type"):
+            tpname = tp.get("name")
+            t = types[tpname]
+            if t.available_since is not None:
+                Convoy.exit_error(
+                    f"Type <bold>{tpname}</bold> is already flagged as required since <bold>{t.available_since}</bold>. Cannot register it again for the <bold>{version}</bold> feature."
+                )
+
+            t.available_since = version
+            guards = GuardGroup()
+            if version != "VK_VERSION_1_0" and args.guard_version:
+                guards.and_guards(version)
+
+            t.guards.append(guards)
+            Convoy.verbose(
+                f"Registered availability of type <bold>{tpname}</bold> from the <bold>{version}</bold> feature."
             )
 
 spec_version_req = {
@@ -384,9 +458,16 @@ for extension in root.findall("extensions/extension"):
                 guards.and_guards(
                     f"{extname.upper()}_SPEC_VERSION >= {spec_version_req[fname]}"
                 )
-            functions[fname].guards.append(guards)
+            functions[fname].guards.append(copy.deepcopy(guards))
             Convoy.verbose(
                 f"Registered availability of function <bold>{name}</bold> from the <bold>{name}</bold> extension."
+            )
+
+        for tp in require.findall("type"):
+            tpname = tp.get("name")
+            types[tpname].guards.append(copy.deepcopy(guards))
+            Convoy.verbose(
+                f"Registered availability of type <bold>{tpname}</bold> from the <bold>{extname}</bold> extension."
             )
 
 
@@ -612,5 +693,26 @@ with cpp.scope("namespace VKit", indent=0):
 
 hpp.write(output)
 cpp.write(output)
+
+tmpath: Path | None = args.export_timeline
+if tmpath is None:
+    Convoy.exit_ok()
+
+tmpath = tmpath.resolve()
+
+with open(tmpath, "w") as f:
+    for fn in functions.values():
+        guards = fn.parse_guards()
+        if guards:
+            f.write(f"{fn.name} -> {guards}\n")
+        else:
+            f.write(f"{fn.name} - No requirements\n")
+
+    for tp in types.values():
+        guards = tp.parse_guards()
+        if guards:
+            f.write(f"{tp.name} -> {guards}\n")
+        else:
+            f.write(f"{tp.name} - No requirements\n")
 
 Convoy.exit_ok()
