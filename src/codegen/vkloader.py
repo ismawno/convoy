@@ -493,7 +493,7 @@ hpp.disclaimer("vkloader.py")
 hpp.include("vkit/vulkan/vulkan.hpp", quotes=True)
 
 
-with hpp.scope("namespace VKit", indent=0):
+with hpp.scope("namespace VKit::Vulkan", indent=0):
     hpp.spacing()
 
     hpp("#if defined(TKIT_OS_APPLE) || defined(TKIT_OS_LINUX)", indent=0)
@@ -573,7 +573,7 @@ with cpp.scope("namespace VKit", indent=0):
         code(fn.as_fn_pointer_declaration(modifier="static", null=True))
         with code.scope(fn.as_string(vk_prefix=False, semicolon=False, noexcept=True)):
             code(
-                f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", VKit::{fn.name});'
+                f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", Vulkan::{fn.name});'
             )
             pnames = [p.name for p in fn.params]
             if fn.return_type != "void":
@@ -598,11 +598,11 @@ with cpp.scope("namespace VKit", indent=0):
     with cpp.scope():
         cpp("#if defined(TKIT_OS_APPLE) || defined(TKIT_OS_LINUX)", indent=0)
         cpp(
-            'VKit::vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(p_Library, "vkGetInstanceProcAddr"));'
+            'Vulkan::vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(p_Library, "vkGetInstanceProcAddr"));'
         )
         cpp("#else", indent=0)
         cpp(
-            'VKit::vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(p_Library, "vkGetInstanceProcAddr"));'
+            'Vulkan::vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(p_Library, "vkGetInstanceProcAddr"));'
         )
         cpp("#endif", indent=0)
 
@@ -617,7 +617,7 @@ with cpp.scope("namespace VKit", indent=0):
             guards = fn.parse_guards()
             guard_if_needed(
                 cpp,
-                f'VKit::{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "{fn.name}"));',
+                f'Vulkan::{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "{fn.name}"));',
                 guards,
             )
     cpp.spacing()
