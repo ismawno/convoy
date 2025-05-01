@@ -102,11 +102,22 @@ broken_functions = {
 
 
 @dataclass
+class Parameter:
+    name: str
+    tp: str
+    array: str | None = None
+
+    def as_string(self) -> str:
+        if self.array is not None:
+            return f"{self.tp} {self.name}{self.array}"
+        return f"{self.tp} {self.name}"
+
+
+@dataclass
 class Function:
     name: str
     return_type: str
-    params: list[str]
-    param_types: list[str]
+    params: list[Parameter]
     dispatchable: bool
     available_since: str | None = None
     guards: list[GuardGroup] = field(default_factory=list)
@@ -131,10 +142,7 @@ class Function:
         semicolon: bool = True,
         noexcept: bool = False,
     ) -> str:
-        params = ", ".join(
-            f"{param_type} {param_name}"
-            for param_type, param_name in zip(self.param_types, self.params)
-        )
+        params = ", ".join(p.as_string() for p in self.params)
         name = self.name if vk_prefix else self.name.removeprefix("vk")
         if namespace is not None:
             name = f"{namespace}::{name}"
@@ -176,8 +184,8 @@ class Function:
             ]
             and self.dispatchable
             and (
-                self.param_types[0] == "VkInstance"
-                or self.param_types[0] == "VkPhysicalDevice"
+                self.params[0].tp == "VkInstance"
+                or self.params[0].tp == "VkPhysicalDevice"
             )
         )
 
@@ -185,8 +193,8 @@ class Function:
         return (
             fn.name not in ["vkGetDeviceProcAddr", "vkCreateDevice", "vkDestroyDevice"]
             and self.dispatchable
-            and self.param_types[0] != "VkInstance"
-            and self.param_types[0] != "VkPhysicalDevice"
+            and self.params[0].tp != "VkInstance"
+            and self.params[0].tp != "VkPhysicalDevice"
         )
 
 
@@ -257,8 +265,7 @@ for command in root.findall("commands/command"):
     if api is not None and vulkan_api not in api.split(","):
         continue
 
-    params = []
-    param_types = []
+    params: list[Parameter] = []
     for param in command.findall("param"):
         api = param.get("api")
         if api is not None and vulkan_api not in api.split(","):
@@ -268,15 +275,21 @@ for command in root.findall("commands/command"):
         full = "".join(param.itertext()).strip()
         param_type = full.rsplit(param_name, 1)[0].strip()
 
-        params.append(param_name)
-        param_types.append(param_type)
+        idx1 = full.find("[")
+        idx2 = full.find("]")
+
+        p = Parameter(
+            param_name,
+            param_type,
+            full[idx1 : idx2 + 1].strip() if idx1 != -1 and idx2 != -1 else None,
+        )
+        params.append(p)
 
     fn = Function(
         name,
         return_type,
         params,
-        param_types,
-        param_types and param_types[0] in dispatchables,
+        params and params[0].tp in dispatchables,
     )
     functions[name] = fn
     Convoy.verbose(f"Parsed vulkan function <bold>{fn.as_string()}</bold>.")
@@ -301,7 +314,8 @@ for command in root.findall("commands/command"):
 
     fn = copy.deepcopy(functions[alias])
     fn.name = name
-    for i, fntp in enumerate(fn.param_types):
+    for i, param in enumerate(fn.params):
+        fntp = param.tp
         clean_fntp = (
             fntp.replace("const", "").replace("*", "").replace("struct", "").strip()
         )
@@ -310,7 +324,7 @@ for command in root.findall("commands/command"):
 
         tpal = type_aliases[clean_fntp]
         closest = difflib.get_close_matches(name, tpal, n=1, cutoff=0.0)[0]
-        fn.param_types[i] = fntp.replace(clean_fntp, closest)
+        fn.params[i].tp = fntp.replace(clean_fntp, closest)
 
     functions[name] = fn
 
@@ -456,6 +470,13 @@ cpp.disclaimer("vkloader.py")
 cpp.include("vkit/core/pch.hpp", quotes=True)
 cpp.include((output / "loader.hpp").resolve(), quotes=True)
 cpp.include("tkit/utils/logging.hpp", quotes=True)
+cpp("#if defined(TKIT_OS_APPLE) || defined(TKIT_OS_LINUX)", indent=0)
+cpp.include("dlfcn.h")
+cpp("#elif defined(TKIT_OS_WINDOWS)", indent=0)
+cpp.include("windows.h")
+cpp("#else", indent=0)
+cpp('#error "[VULKIT] Unsupported platform to load Vulkan library"', indent=0)
+cpp("#endif", indent=0)
 
 with cpp.scope("namespace VKit", indent=0):
 
@@ -473,10 +494,11 @@ with cpp.scope("namespace VKit", indent=0):
             code(
                 f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", VKit::{fn.name});'
             )
+            pnames = [p.name for p in fn.params]
             if fn.return_type != "void":
-                code(f"return fn({', '.join(fn.params)});")
+                code(f"return fn({', '.join(pnames)});")
             else:
-                code(f"fn({', '.join(fn.params)});")
+                code(f"fn({', '.join(pnames)});")
 
     cpp.spacing()
     for fn in functions.values():
@@ -495,11 +517,11 @@ with cpp.scope("namespace VKit", indent=0):
     with cpp.scope():
         cpp("#if defined(TKIT_OS_APPLE) || defined(TKIT_OS_LINUX)", indent=0)
         cpp(
-            'vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(p_Library, "vkGetInstanceProcAddr"));'
+            'VKit::vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(p_Library, "vkGetInstanceProcAddr"));'
         )
         cpp("#else", indent=0)
         cpp(
-            'vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(p_Library, "vkGetInstanceProcAddr"));'
+            'VKit::vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(p_Library, "vkGetInstanceProcAddr"));'
         )
         cpp("#endif", indent=0)
 
@@ -514,7 +536,7 @@ with cpp.scope("namespace VKit", indent=0):
             guards = fn.parse_guards()
             guard_if_needed(
                 cpp,
-                f'{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "{fn.name}"));',
+                f'VKit::{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "{fn.name}"));',
                 guards,
             )
     cpp.spacing()
@@ -542,7 +564,7 @@ with cpp.scope("namespace VKit", indent=0):
             guards = fn.parse_guards()
             guard_if_needed(
                 cpp,
-                f'functions.{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetInstanceProcAddr(p_Device, "{fn.name}"));',
+                f'functions.{fn.name} = reinterpret_cast<{fn.as_fn_pointer_type()}>(vkGetDeviceProcAddr(p_Device, "{fn.name}"));',
                 guards,
             )
         cpp("return functions;")
@@ -556,10 +578,11 @@ with cpp.scope("namespace VKit", indent=0):
             code(
                 f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", this->{fn.name});'
             )
+            pnames = [p.name for p in fn.params]
             if fn.return_type != "void":
-                code(f"return fn({', '.join(fn.params)});")
+                code(f"return fn({', '.join(pnames)});")
             else:
-                code(f"fn({', '.join(fn.params)});")
+                code(f"fn({', '.join(pnames)});")
 
     cpp.spacing()
     for fn in functions.values():
