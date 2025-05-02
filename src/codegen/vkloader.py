@@ -569,6 +569,7 @@ cpp("#endif", indent=0)
 
 with cpp.scope("namespace VKit::Vulkan", indent=0):
 
+    cpp("#ifdef TKIT_ENABLE_ASSERTS", indent=0)
     with cpp.scope(
         "template <typename T> static T validateFunction(const char *p_Name, T &&p_Function)"
     ):
@@ -576,18 +577,28 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
             "TKIT_ASSERT(p_Function, \"The function '{}' is not available for the device being used.\", p_Name);"
         )
         cpp("return p_Function;")
+    cpp("#endif", indent=0)
 
     def code(code: CPPFile, fn: Function, /) -> None:
         code(fn.as_fn_pointer_declaration(null=True))
         with code.scope(fn.as_string(vk_prefix=False, semicolon=False, noexcept=True)):
+
+            pnames = [p.name for p in fn.params]
+
+            def write_fn(name: str, /) -> None:
+                if fn.return_type != "void":
+                    code(f"return {name}({', '.join(pnames)});")
+                else:
+                    code(f"{name}({', '.join(pnames)});")
+
+            code("#ifdef TKIT_ENABLE_ASSERTS", indent=0)
             code(
                 f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", Vulkan::{fn.name});'
             )
-            pnames = [p.name for p in fn.params]
-            if fn.return_type != "void":
-                code(f"return fn({', '.join(pnames)});")
-            else:
-                code(f"fn({', '.join(pnames)});")
+            write_fn("fn")
+            code("#else", indent=0)
+            write_fn(f"Vulkan::{fn.name}")
+            code("#endif", indent=0)
 
     cpp.spacing()
     for fn in functions.values():
@@ -666,14 +677,23 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
                 namespace=namespace,
             )
         ):
+
+            pnames = [p.name for p in fn.params]
+
+            def write_fn(name: str, /) -> None:
+                if fn.return_type != "void":
+                    code(f"return {name}({', '.join(pnames)});")
+                else:
+                    code(f"{name}({', '.join(pnames)});")
+
+            code("#ifdef TKIT_ENABLE_ASSERTS", indent=0)
             code(
                 f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", this->{fn.name});'
             )
-            pnames = [p.name for p in fn.params]
-            if fn.return_type != "void":
-                code(f"return fn({', '.join(pnames)});")
-            else:
-                code(f"fn({', '.join(pnames)});")
+            write_fn("fn")
+            code("#else", indent=0)
+            write_fn(f"this->{fn.name}")
+            code("#endif", indent=0)
 
     cpp.spacing()
     for fn in functions.values():
