@@ -562,7 +562,7 @@ cpp("#else", indent=0)
 cpp('#error "[VULKIT] Unsupported platform to load Vulkan library"', indent=0)
 cpp("#endif", indent=0)
 
-with cpp.scope("namespace VKit", indent=0):
+with cpp.scope("namespace VKit::Vulkan", indent=0):
 
     with cpp.scope(
         "template <typename T> static T validateFunction(const char *p_Name, T &&p_Function)"
