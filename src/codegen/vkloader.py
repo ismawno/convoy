@@ -573,7 +573,7 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
         cpp("return p_Function;")
 
     def code(code: CPPFile, fn: Function, /) -> None:
-        code(fn.as_fn_pointer_declaration(modifier="static", null=True))
+        code(fn.as_fn_pointer_declaration(null=True))
         with code.scope(fn.as_string(vk_prefix=False, semicolon=False, noexcept=True)):
             code(
                 f'static {fn.as_fn_pointer_type()} fn = validateFunction("{fn.name}", Vulkan::{fn.name});'
