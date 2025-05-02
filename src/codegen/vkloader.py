@@ -533,8 +533,8 @@ with hpp.scope("namespace VKit::Vulkan", indent=0):
         code(fn.as_fn_pointer_declaration(null=True))
         code(fn.as_string(vk_prefix=False, no_discard=True, noexcept=True, const=True))
 
-    with hpp.scope("struct VKIT_API InstanceFunctions", closer="};"):
-        hpp("static InstanceFunctions Create(VkInstance p_Instance);")
+    with hpp.scope("struct VKIT_API InstanceTable", closer="};"):
+        hpp("static InstanceTable Create(VkInstance p_Instance);")
         for fn in functions.values():
             if not fn.is_instance_function():
                 continue
@@ -543,8 +543,8 @@ with hpp.scope("namespace VKit::Vulkan", indent=0):
             guard_if_needed(hpp, code, guards, fn)
             hpp.spacing()
 
-    with hpp.scope("struct VKIT_API DeviceFunctions", closer="};"):
-        hpp("static DeviceFunctions Create(VkDevice p_Device);")
+    with hpp.scope("struct VKIT_API DeviceTable", closer="};"):
+        hpp("static DeviceTable Create(VkDevice p_Device);")
         for fn in functions.values():
             if not fn.is_device_function():
                 continue
@@ -629,10 +629,8 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
                 guards,
             )
     cpp.spacing()
-    with cpp.scope(
-        "InstanceFunctions InstanceFunctions::Create(const VkInstance p_Instance)"
-    ):
-        cpp("InstanceFunctions functions{};")
+    with cpp.scope("InstanceTable InstanceTable::Create(const VkInstance p_Instance)"):
+        cpp("InstanceTable functions{};")
         for fn in functions.values():
             if not fn.is_instance_function():
                 continue
@@ -645,8 +643,8 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
         cpp("return functions;")
 
     cpp.spacing()
-    with cpp.scope("DeviceFunctions DeviceFunctions::Create(const VkDevice p_Device)"):
-        cpp("DeviceFunctions functions{};")
+    with cpp.scope("DeviceTable DeviceTable::Create(const VkDevice p_Device)"):
+        cpp("DeviceTable functions{};")
         for fn in functions.values():
             if not fn.is_device_function():
                 continue
@@ -687,7 +685,7 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
             code,
             guards,
             fn,
-            namespace="InstanceFunctions",
+            namespace="InstanceTable",
         )
 
     cpp.spacing()
@@ -700,7 +698,7 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
             code,
             guards,
             fn,
-            namespace="DeviceFunctions",
+            namespace="DeviceTable",
         )
 
 hpp.write(output)
