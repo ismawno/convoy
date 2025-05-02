@@ -206,7 +206,6 @@ class Function:
             not in [
                 "vkGetInstanceProcAddr",
                 "vkCreateInstance",
-                "vkDestroyInstance",
             ]
             and self.dispatchable
             and (
@@ -217,7 +216,7 @@ class Function:
 
     def is_device_function(self) -> bool:
         return (
-            fn.name not in ["vkGetDeviceProcAddr", "vkCreateDevice", "vkDestroyDevice"]
+            fn.name != "vkGetDeviceProcAddr"
             and self.dispatchable
             and self.params[0].tp != "VkInstance"
             and self.params[0].tp != "VkPhysicalDevice"
