@@ -158,6 +158,7 @@ class Function:
         api_macro: bool = False,
         semicolon: bool = True,
         noexcept: bool = False,
+        const: bool = False,
     ) -> str:
         params = ", ".join(p.as_string() for p in self.params)
         name = self.name if vk_prefix else self.name.removeprefix("vk")
@@ -169,12 +170,14 @@ class Function:
             rtype = f"[[nodiscard]] {rtype}"
         if api_macro:
             rtype = f"VKIT_API {rtype}"
-        noexcept = " noexcept" if noexcept else ""
+        modifiers = " const" if const else ""
+        if noexcept:
+            modifiers += " noexcept"
 
         return (
-            f"{rtype} {name}({params}){noexcept};"
+            f"{rtype} {name}({params}){modifiers};"
             if semicolon
-            else f"{rtype} {name}({params}){noexcept}"
+            else f"{rtype} {name}({params}){modifiers}"
         )
 
     def as_fn_pointer_declaration(
@@ -523,7 +526,7 @@ with hpp.scope("namespace VKit::Vulkan", indent=0):
 
     def code(code: CPPFile, fn: Function, /) -> None:
         code(fn.as_fn_pointer_declaration(null=True))
-        code(fn.as_string(vk_prefix=False, no_discard=True, noexcept=True))
+        code(fn.as_string(vk_prefix=False, no_discard=True, noexcept=True, const=True))
 
     with hpp.scope("struct VKIT_API InstanceFunctions", closer="};"):
         hpp("static InstanceFunctions Create(VkInstance p_Instance);")
@@ -653,7 +656,11 @@ with cpp.scope("namespace VKit", indent=0):
     def code(code: CPPFile, fn: Function, /, *, namespace: str) -> None:
         with code.scope(
             fn.as_string(
-                vk_prefix=False, semicolon=False, noexcept=True, namespace=namespace
+                vk_prefix=False,
+                semicolon=False,
+                noexcept=True,
+                const=True,
+                namespace=namespace,
             )
         ):
             code(
