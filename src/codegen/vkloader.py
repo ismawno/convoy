@@ -526,7 +526,7 @@ with hpp.scope("namespace VKit::Vulkan", indent=0):
         code(fn.as_string(vk_prefix=False, no_discard=True, noexcept=True))
 
     with hpp.scope("struct VKIT_API InstanceFunctions", closer="};"):
-        hpp("InstanceFunctions Create(VkInstance p_Instance);")
+        hpp("static InstanceFunctions Create(VkInstance p_Instance);")
         for fn in functions.values():
             if not fn.is_instance_function():
                 continue
@@ -536,7 +536,7 @@ with hpp.scope("namespace VKit::Vulkan", indent=0):
             hpp.spacing()
 
     with hpp.scope("struct VKIT_API DeviceFunctions", closer="};"):
-        hpp("DeviceFunctions Create(VkDevice p_Device);")
+        hpp("static DeviceFunctions Create(VkDevice p_Device);")
         for fn in functions.values():
             if not fn.is_device_function():
                 continue
