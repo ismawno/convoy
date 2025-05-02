@@ -127,7 +127,11 @@ class Type:
 
     def parse_guards(self) -> str:
         guards = [g.parse_guards() for g in self.guards]
-        return " || ".join([f"({g})" if "&&" in g else g for g in guards if g]).strip()
+        return (
+            " || ".join([f"({g})" if "&&" in g else g for g in guards if g])
+            .replace("VK_VERSION", "VKIT_API_VERSION")
+            .strip()
+        )
 
 
 @dataclass
@@ -141,7 +145,9 @@ class Function:
 
     def parse_guards(self) -> str:
         guards = [g.parse_guards() for g in self.guards]
-        guards = " || ".join([f"({g})" if "&&" in g else g for g in guards if g])
+        guards = " || ".join(
+            [f"({g})" if "&&" in g else g for g in guards if g]
+        ).replace("VK_VERSION", "VKIT_API_VERSION")
 
         if self.name not in broken_functions:
             return guards.strip()
