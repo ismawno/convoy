@@ -368,6 +368,7 @@ with ffile.open("r") as f:
 
 hpp = CPPFile(output.name)
 hpp.disclaimer("reflect.py")
+hpp("#pragma once")
 hpp.include(ffile.resolve(), quotes=True)
 hpp.include("tkit/container/array.hpp", quotes=True)
 hpp.include("tkit/reflection/reflect.hpp", quotes=True)
