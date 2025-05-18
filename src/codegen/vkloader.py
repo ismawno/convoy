@@ -2,7 +2,6 @@ from pathlib import Path
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from typing import TypeVar
 
 import sys
 import copy
@@ -261,14 +260,6 @@ root = tree.getroot()
 if root is None:
     Convoy.exit_error("Failed to get the root of the vulkan's XML.")
 
-T = TypeVar("T")
-
-
-def ncheck(param: T | None, /) -> T:
-    if param is None:
-        Convoy.exit_error("Found a None entry when trying to parse the vulkan's XML.")
-    return param
-
 
 def ncheck_text(param: ET.Element[str] | None, /) -> str:
     if param is None or param.text is None:
@@ -294,7 +285,7 @@ def parse_commands(root: ET.Element[str], /, *, alias_sweep: bool) -> None:
             if alias is None:
                 continue
 
-            fname = ncheck(command.get("name"))
+            fname = Convoy.ncheck(command.get("name"))
             if fname in functions:
                 continue
 
@@ -315,7 +306,7 @@ def parse_commands(root: ET.Element[str], /, *, alias_sweep: bool) -> None:
         if alias is not None:
             continue
 
-        proto = ncheck(command.find("proto"))
+        proto = Convoy.ncheck(command.find("proto"))
         fname = ncheck_text(proto.find("name"))
         return_type = ncheck_text(proto.find("type"))
 
@@ -366,7 +357,7 @@ def parse_types(root: ET.Element[str], lookup: str, /, *, alias_sweep: bool) -> 
         if alias_sweep:
             if alias is None:
                 continue
-            tname = ncheck(tp.get("name"))
+            tname = Convoy.ncheck(tp.get("name"))
             if tname in types:
                 continue
 
@@ -401,11 +392,11 @@ Convoy.log(f"Found <bold>{len(functions)}</bold> {vulkan_api} functions in the v
 
 
 for feature in root.findall("feature"):
-    version = ncheck(feature.get("name"))
+    version = Convoy.ncheck(feature.get("name"))
 
     for require in feature.findall("require"):
         for command in require.findall("command"):
-            fname = ncheck(command.get("name"))
+            fname = Convoy.ncheck(command.get("name"))
             fn = functions[fname]
             if fn.available_since is not None:
                 Convoy.exit_error(
@@ -423,7 +414,7 @@ for feature in root.findall("feature"):
             )
 
         for tp in require.findall("type"):
-            tpname = ncheck(tp.get("name"))
+            tpname = Convoy.ncheck(tp.get("name"))
             t = types[tpname]
             if t.available_since is not None:
                 Convoy.exit_error(
@@ -450,7 +441,7 @@ spec_version_req = {
 }
 
 for extension in root.findall("extensions/extension"):
-    extname = ncheck(extension.get("name"))
+    extname = Convoy.ncheck(extension.get("name"))
     for require in extension.findall("require"):
         guards = GuardGroup()
         if args.guard_extension:
@@ -462,7 +453,7 @@ for extension in root.findall("extensions/extension"):
                 guards.and_guards(group.split(","))
 
         for command in require.findall("command"):
-            fname = ncheck(command.get("name"))
+            fname = Convoy.ncheck(command.get("name"))
             if fname in spec_version_req and args.guard_version:
                 guards.and_guards(f"{extname.upper()}_SPEC_VERSION >= {spec_version_req[fname]}")
             functions[fname].guards.append(copy.deepcopy(guards))
@@ -471,7 +462,7 @@ for extension in root.findall("extensions/extension"):
             )
 
         for tp in require.findall("type"):
-            tpname = ncheck(tp.get("name"))
+            tpname = Convoy.ncheck(tp.get("name"))
             types[tpname].guards.append(copy.deepcopy(guards))
             Convoy.verbose(
                 f"Registered availability of type <bold>{tpname}</bold> from the <bold>{extname}</bold> extension."

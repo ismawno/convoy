@@ -76,9 +76,7 @@ def parse_arguments() -> Namespace:
 Convoy.log_label = "FOR-EACH"
 args = parse_arguments()
 if args.safe and args.yes:
-    Convoy.exit_error(
-        "The <bold>-s</bold> and <bold>-y</bold> flags cannot be used together."
-    )
+    Convoy.exit_error("The <bold>-s</bold> and <bold>-y</bold> flags cannot be used together.")
 
 Convoy.safe = args.safe
 Convoy.all_yes = args.yes
@@ -101,22 +99,14 @@ def process_directory(path: Path, cmd: str, /) -> None:
         if not args.skip_if_missing:
             Convoy.exit_error(f"Directory not found: <underline>{path}</underline>")
 
-        Convoy.verbose(
-            f"<fyellow>Skipping missing directory: <underline>{path}</underline>"
-        )
+        Convoy.verbose(f"<fyellow>Skipping missing directory: <underline>{path}</underline>")
         return
 
-    Convoy.verbose(
-        f"Executing command <bold>{cmd}</bold> at <underline>{path}</underline>."
-    )
+    Convoy.verbose(f"Executing command <bold>{cmd}</bold> at <underline>{path}</underline>.")
     if not Convoy.run_process_success(cmd, cwd=path, shell=True):
         if not args.ignore_cmd_errors:
-            Convoy.exit_error(
-                f"Failed to execute command <bold>{cmd}</bold> at <underline>{path}</underline>."
-            )
-        Convoy.verbose(
-            f"<fyellow>Command <bold>{cmd}</bold> failed at <underline>{path}</underline>."
-        )
+            Convoy.exit_error(f"Failed to execute command <bold>{cmd}</bold> at <underline>{path}</underline>.")
+        Convoy.verbose(f"<fyellow>Command <bold>{cmd}</bold> failed at <underline>{path}</underline>.")
 
 
 def process_widlcard(wcard: str, cmd: str, /) -> None:
@@ -125,9 +115,7 @@ def process_widlcard(wcard: str, cmd: str, /) -> None:
         if path.is_dir():
             process_directory(path, cmd)
             return
-        Convoy.exit_error(
-            f"The only path provided is not a directory: <underline>{path}</underline>"
-        )
+        Convoy.exit_error(f"The only path provided is not a directory: <underline>{path}</underline>")
 
     for path in wdir.rglob(wcard) if args.recursive else wdir.glob(wcard):
         path = path.resolve()

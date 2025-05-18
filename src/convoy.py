@@ -6,7 +6,9 @@ import ctypes
 
 from time import perf_counter
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, TypeVar
+
+T = TypeVar("T")
 
 
 class _Style:
@@ -214,6 +216,11 @@ class _MetaConvoy(type):
     def verbose(self, msg: str, /, *args, **kwargs) -> None:
         if self.is_verbose:
             print(self.__format(f"{self.__log_label}{msg}"), *args, **kwargs)
+
+    def ncheck(self, param: T | None, /, *, msg: str | None = None) -> T:
+        if param is None:
+            self.exit_error(msg or "Found a <bold>None</bold> value.")
+        return param
 
     def exit_ok(self, msg: str | None = None, /) -> NoReturn:
         if msg is not None:
