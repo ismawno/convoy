@@ -123,7 +123,11 @@ def parse_class(
     /,
 ) -> ClassInfo:
     clsline = lines[0].replace("template ", "template")
-    name = re.match(rf".*{clstype} ([a-zA-Z0-9_<>, ]+)", clsline).group(1)
+    name = re.match(rf".*{clstype} ([a-zA-Z0-9_<>, ]+)", clsline)
+    if name is not None:
+        name = name.group(1)
+    else:
+        Convoy.exit_error(f"A match was not found when trying to extract the name of the {clstype}.")
     visibility = "private" if clstype == "class" else "public"
 
     mtch = re.match(r".*template<(.*?)>", clsline)
@@ -133,14 +137,16 @@ def parse_class(
         Convoy.exit_error("Found duplicate template line.")
 
     if template_decl is None and template_line is not None:
-        template_decl = (
-            re.match(r".*template<(.*?)>", template_line).group(1).replace(" ,", ",")
-        )
+        template_decl = re.match(r".*template<(.*?)>", template_line)
+        if template_decl is not None:
+            template_decl = template_decl.group(1).replace(" ,", ",")
+        else:
+            Convoy.exit_error(
+                f"A match was not found when trying to extract the template declaration of the {name} {clstype}."
+            )
 
     if template_decl is not None and "<" not in name:
-        template_vars = ", ".join(
-            [var.split(" ")[1] for var in template_decl.replace(", ", ",").split(",")]
-        )
+        template_vars = ", ".join([var.split(" ")[1] for var in template_decl.replace(", ", ",").split(",")])
         name = f"{name}<{template_vars}>"
 
     groups = []
@@ -158,17 +164,15 @@ def parse_class(
     for line in lines:
         line = line.strip()
         if macro.group_begin in line:
-            group = (
-                re.match(rf"{macro.group_begin}\((.*?)\)", line)
-                .group(1)
-                .replace('"', "")
-            )
+            group = re.match(rf"{macro.group_begin}\((.*?)\)", line)
+            if group is not None:
+                group = group.group(1).replace('"', "")
+            else:
+                Convoy.exit_error(f"Failed to match group name macro")
             if group == "":
                 Convoy.exit_error("Group name cannot be empty.")
             if group == "Static":
-                Convoy.exit_error(
-                    "Group name cannot be <bold>Static</bold>. It is a reserved name."
-                )
+                Convoy.exit_error("Group name cannot be <bold>Static</bold>. It is a reserved name.")
             groups.append(group)
 
         elif macro.group_end in line:
@@ -190,13 +194,11 @@ def parse_class(
             scope_counter -= 1
 
         if scope_counter < 0:
-            Convoy.exit_error(
-                f"Scope counter reached a negative value: {scope_counter}."
-            )
+            Convoy.exit_error(f"Scope counter reached a negative value: {scope_counter}.")
         if scope_counter != 1:
             continue
 
-        def check_privacy(look_for: str, /) -> bool:
+        def check_privacy(look_for: str, /) -> None:
             nonlocal visibility
             if f"{look_for}:" in line:
                 visibility = look_for
@@ -241,12 +243,8 @@ def parse_class(
             set(groups),
         )
         fields = static_fields if is_static else nstatic_fields
-        fields_per_type = (
-            static_fields_per_type if is_static else nstatic_fields_per_type
-        )
-        fields_per_group = (
-            static_fields_per_group if is_static else nstatic_fields_per_group
-        )
+        fields_per_type = static_fields_per_type if is_static else nstatic_fields_per_type
+        fields_per_group = static_fields_per_group if is_static else nstatic_fields_per_group
 
         fields.append(field)
         fields_per_type.setdefault(field.vtype, []).append(field)
@@ -254,21 +252,15 @@ def parse_class(
             fields_per_group.setdefault(group, []).append(field)
 
     if ignore:
-        Convoy.exit_error(
-            f"Ignore macro was not closed properly with a <bold>{macro.ignore_end}</bold>."
-        )
+        Convoy.exit_error(f"Ignore macro was not closed properly with a <bold>{macro.ignore_end}</bold>.")
 
     if groups:
-        Convoy.exit_error(
-            f"Group macro was not closed properly with a <bold>{macro.group_end}</bold>."
-        )
+        Convoy.exit_error(f"Group macro was not closed properly with a <bold>{macro.group_end}</bold>.")
 
     return ClassInfo(
         name,
         namespaces,
-        FieldCollection(
-            nstatic_fields, nstatic_fields_per_type, nstatic_fields_per_group
-        ),
+        FieldCollection(nstatic_fields, nstatic_fields_per_type, nstatic_fields_per_group),
         FieldCollection(static_fields, static_fields_per_type, static_fields_per_group),
         template_decl,
     )
@@ -311,10 +303,7 @@ def parse_classes_in_file(
 
         template_line = (
             lines[i - 1]
-            if i > 0
-            and "template" in lines[i - 1]
-            and "struct" not in lines[i - 1]
-            and "class" not in lines[i - 1]
+            if i > 0 and "template" in lines[i - 1] and "struct" not in lines[i - 1] and "class" not in lines[i - 1]
             else None
         )
         clstype = "class" if is_class else "struct"
@@ -322,13 +311,9 @@ def parse_classes_in_file(
 
         Convoy.verbose(f"Found and parsed <bold>{clinfo.name}</bold> {clstype}.")
         for field in clinfo.nstatic.all:
-            Convoy.verbose(
-                f"  -Registered field member <bold>{field.as_str(clinfo.name, is_static=False)}</bold>."
-            )
+            Convoy.verbose(f"  -Registered field member <bold>{field.as_str(clinfo.name, is_static=False)}</bold>.")
         for field in clinfo.static.all:
-            Convoy.verbose(
-                f"  -Registered field member <bold>{field.as_str(clinfo.name, is_static=True)}</bold>."
-            )
+            Convoy.verbose(f"  -Registered field member <bold>{field.as_str(clinfo.name, is_static=True)}</bold>.")
         classes.append(clinfo)
 
     return classes
@@ -354,22 +339,16 @@ with ffile.open("r") as f:
         text = re.sub(r"//.*", "", text)
         return re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
 
-    content = (
-        remove_comments(f.read())
-        .replace("<class", "<typename")
-        .replace(", class", ", typename")
-    )
+    content = remove_comments(f.read()).replace("<class", "<typename").replace(", class", ", typename")
     if macro.declare not in content:
-        Convoy.verbose(
-            f"<fyellow>Macro '{macro.declare}' not found in file '{ffile}'. Exiting..."
-        )
+        Convoy.verbose(f"<fyellow>Macro '{macro.declare}' not found in file '{ffile}'. Exiting...")
         sys.exit()
     classes = parse_classes_in_file(content.splitlines())
 
 hpp = CPPFile(output.name)
 hpp.disclaimer("reflect.py")
 hpp("#pragma once")
-hpp.include(ffile.resolve(), quotes=True)
+hpp.include(str(ffile.resolve()), quotes=True)
 hpp.include("tkit/container/array.hpp", quotes=True)
 hpp.include("tkit/reflection/reflect.hpp", quotes=True)
 hpp.include("tkit/utils/concepts.hpp", quotes=True)
@@ -392,9 +371,7 @@ with hpp.scope("namespace TKit", indent=0):
                 hpp("Protected = 1,")
                 hpp("Public = 2")
 
-            def generate_reflect_body(
-                fcollection: FieldCollection, /, *, is_static: bool
-            ) -> None:
+            def generate_reflect_body(fcollection: FieldCollection, /, *, is_static: bool) -> None:
                 static = "Static" if is_static else ""
 
                 hpp("public:")
@@ -404,9 +381,7 @@ with hpp.scope("namespace TKit", indent=0):
                         for i, group in enumerate(fcollection.per_group):
                             hpp(f"{group} = {i},")
 
-                with hpp.scope(
-                    f"template <typename T> struct {static}Field", closer="};"
-                ):
+                with hpp.scope(f"template <typename T> struct {static}Field", closer="};"):
                     hpp("using Type = T;")
                     hpp("const char *Name;")
                     hpp("const char *TypeString;")
@@ -417,13 +392,9 @@ with hpp.scope("namespace TKit", indent=0):
                     hpp("FieldVisibility Visibility;")
 
                     if not is_static:
-                        with hpp.scope(
-                            f"T &Get({cls.name} &p_Instance) const noexcept"
-                        ):
+                        with hpp.scope(f"T &Get({cls.name} &p_Instance) const noexcept"):
                             hpp("return p_Instance.*Pointer;")
-                        with hpp.scope(
-                            f"const T &Get(const {cls.name} &p_Instance) const noexcept"
-                        ):
+                        with hpp.scope(f"const T &Get(const {cls.name} &p_Instance) const noexcept"):
                             hpp("return p_Instance.*Pointer;")
 
                         with hpp.scope(
@@ -431,9 +402,7 @@ with hpp.scope("namespace TKit", indent=0):
                         ):
                             hpp("p_Instance.*Pointer = std::forward<U>(p_Value);")
 
-                def create_cpp_fields_sequence(
-                    fields: list[Field], /, *, group: str | None = None
-                ) -> list[str]:
+                def create_cpp_fields_sequence(fields: list[Field], /, *, group: str | None = None) -> list[str]:
                     def replacer(vtype: str, /) -> str:
                         return vtype.replace('"', r"\"")
 
@@ -446,23 +415,17 @@ with hpp.scope("namespace TKit", indent=0):
                 def create_tuple_sequence(fields: list[str], /, **_) -> str:
                     return f"std::make_tuple({', '.join(fields)})"
 
-                def create_array_sequence(
-                    fields: list[str], /, *, vtype: str | None = None
-                ) -> str:
+                def create_array_sequence(fields: list[str], /, *, vtype: str | None = None) -> str:
                     if vtype is None:
                         vtype = "T"
                     return f"Array<{static}Field<{vtype}>, {len(fields)}>{{{', '.join(fields)}}}"
 
-                def create_get_fields_method(
-                    fields: list[str], /, *, group: str = ""
-                ) -> None:
+                def create_get_fields_method(fields: list[Field], /, *, group: str = "") -> None:
                     fields_cpp = create_cpp_fields_sequence(fields)
                     with hpp.scope(
                         f"template <typename... Args> static constexpr auto Get{static}{group}Fields() noexcept"
                     ):
-                        with hpp.scope(
-                            "if constexpr (sizeof...(Args) == 0)", delimiters=False
-                        ):
+                        with hpp.scope("if constexpr (sizeof...(Args) == 0)", delimiters=False):
                             hpp(f"return {create_tuple_sequence(fields_cpp)};")
                         with hpp.scope(
                             "else if constexpr (sizeof...(Args) == 1)",
@@ -470,9 +433,7 @@ with hpp.scope("namespace TKit", indent=0):
                         ):
                             hpp(f"return get{static}{group}Array<Args...>();")
                         with hpp.scope("else", delimiters=False):
-                            hpp(
-                                f"return std::tuple_cat(get{static}{group}Tuple<Args>()...);"
-                            )
+                            hpp(f"return std::tuple_cat(get{static}{group}Tuple<Args>()...);")
 
                 def create_for_each_method(*, group: str = "") -> None:
                     with hpp.scope(
@@ -522,9 +483,7 @@ with hpp.scope("namespace TKit", indent=0):
                     with hpp.scope(
                         f"template <Group G, typename... Args, typename F> static constexpr void ForEach{static}FieldByGroup(F &&p_Fun) noexcept"
                     ):
-                        hpp(
-                            f"const auto fields = Get{static}FieldsByGroup<G, Args...>();"
-                        )
+                        hpp(f"const auto fields = Get{static}FieldsByGroup<G, Args...>();")
                         hpp(f"ForEach{static}Field(fields, std::forward<F>(p_Fun));")
 
                 for group, fields in fcollection.per_group.items():
@@ -532,7 +491,7 @@ with hpp.scope("namespace TKit", indent=0):
                     create_for_each_method(group=group)
 
                 def create_if_constexpr_per_type(
-                    seq_creator: Callable[[list[str]], str],
+                    seq_creator: Callable[..., str],
                     null: str,
                     /,
                     *,
@@ -559,9 +518,7 @@ with hpp.scope("namespace TKit", indent=0):
                     with hpp.scope(
                         f"template <typename T> static constexpr auto get{static}{group if group is not None else ''}Tuple() noexcept"
                     ):
-                        create_if_constexpr_per_type(
-                            create_tuple_sequence, "std::tuple{}", group=group
-                        )
+                        create_if_constexpr_per_type(create_tuple_sequence, "std::tuple{}", group=group)
 
                 def create_get_array_method(*, group: str | None = None) -> None:
                     with hpp.scope(
