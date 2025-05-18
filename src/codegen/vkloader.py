@@ -261,7 +261,7 @@ if root is None:
     Convoy.exit_error("Failed to get the root of the vulkan's XML.")
 
 
-def ncheck_text(param: ET.Element[str] | None, /) -> str:
+def ncheck_text(param: ET.Element | None, /) -> str:
     if param is None or param.text is None:
         Convoy.exit_error("Found a None entry when trying to parse the vulkan's XML.")
     return param.text
@@ -277,7 +277,7 @@ for h in root.findall("types/type[@category='handle']"):
 functions: dict[str, Function] = {}
 
 
-def parse_commands(root: ET.Element[str], /, *, alias_sweep: bool) -> None:
+def parse_commands(root: ET.Element, /, *, alias_sweep: bool) -> None:
     for command in root.findall("commands/command"):
         alias = command.get("alias")
         if alias_sweep:
@@ -350,7 +350,7 @@ types: dict[str, Type] = {}
 type_aliases: dict[str, list[str]] = {}
 
 
-def parse_types(root: ET.Element[str], lookup: str, /, *, alias_sweep: bool) -> None:
+def parse_types(root: ET.Element, lookup: str, /, *, alias_sweep: bool) -> None:
     for tp in root.findall(lookup):
         alias = tp.get("alias")
 
