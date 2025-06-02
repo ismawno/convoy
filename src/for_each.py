@@ -4,7 +4,10 @@ from convoy import Convoy
 
 
 def parse_arguments() -> Namespace:
-    parser = ArgumentParser()
+    desc = """This python scripts executes multiple commands from different
+    working directories. Useful when managing multiple projects and must, for example 'git push' all of them."""
+
+    parser = ArgumentParser(description=desc)
     parser.add_argument(
         "-c",
         "--cmds",
