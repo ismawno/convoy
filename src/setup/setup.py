@@ -279,14 +279,17 @@ def validate_operating_system() -> None:
         Convoy.log(f"ARM: {Convoy.is_arm}")
 
     if Convoy.is_linux:
-        global g_linux_devtools, g_linux_dependencies
+        global g_linux_devtools, g_linux_dependencies, g_linux_version
 
         Convoy.log(f"Distribution: {g_linux_distro} {g_linux_version}")
         if g_linux_distro is None:
             Convoy.exit_error("Failed to detect Linux distribution.")
 
-        if g_linux_version is None:
+        if g_linux_distro != "arch" and g_linux_version is None:
             Convoy.exit_error("Failed to detect Linux version.")
+
+        if g_linux_version is None:
+            g_linux_version = "<rolling>"
 
         if g_linux_distro not in ["ubuntu", "fedora", "arch"]:
             Convoy.exit_error(f"Unsupported Linux distribution: <bold>{g_linux_distro}</bold>.")
