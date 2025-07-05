@@ -143,7 +143,7 @@ def get_fields_with_options(clsinfo: Class, /) -> list[tuple[Field, list[str]]]:
     return result
 
 
-with hpp.scope("namespace TKit", indent=0):
+with hpp.scope(f"namespace TKit::{args.backend.capitalize()}", indent=0):
     for clsinfo in classes:
         fields = get_fields_with_options(clsinfo)
 
