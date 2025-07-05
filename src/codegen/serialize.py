@@ -19,14 +19,15 @@ def parse_arguments() -> Namespace:
 
     It is also possible to group fields with the macros TKIT_SERIALIZE_GROUP_BEGIN and TKIT_SERIALIZE_GROUP_END,
     so that they may receive special treatment when serializing/deserializing through options passed as macro arguments
-    such as: TKIT_SERIALIZE_GROUP_BEGIN("MyGroup", "--skip-if-missing", "parse-as int").
+    such as: TKIT_SERIALIZE_GROUP_BEGIN("MyGroup", "--skip-if-missing", "serialize-as int").
 
     The list of options is the following:
 
     skip-if-missing: When deserializing, check if the field exists. If it doesnt, skip it silently.
     only-serialize: Create only serialization code for the selected fields.
     only-deserialize: Create only deserialization code for the selected fields.
-    parse-as <type>: Override the type of the selected fields and parse them with the specified one when deserializing.
+    serialize-as <type>: Override the type of the selected fields and parse them with the specified one when serializing.
+    deserialize-as <type>: Override the type of the selected fields and parse them with the specified one when deserializing.
 
     If some fields must be left out, the macros TKIT_SERIALIZE_IGNORE_BEGIN and TKIT_SERIALIZE_IGNORE_END can also
     be used.
@@ -71,16 +72,18 @@ Convoy.is_verbose = args.verbose
 
 output: Path = args.output.resolve()
 ffile: Path = args.input.resolve()
+gpair = MacroPair(
+    "TKIT_SERIALIZE_GROUP_BEGIN",
+    "TKIT_SERIALIZE_GROUP_END",
+)
+ipair = MacroPair(
+    "TKIT_SERIALIZE_IGNORE_BEGIN",
+    "TKIT_SERIALIZE_IGNORE_END",
+)
 macros = ControlMacros(
     "TKIT_SERIALIZE_DECLARE",
-    MacroPair(
-        "TKIT_SERIALIZE_GROUP_BEGIN",
-        "TKIT_SERIALIZE_GROUP_END",
-    ),
-    MacroPair(
-        "TKIT_SERIALIZE_IGNORE_BEGIN",
-        "TKIT_SERIALIZE_IGNORE_END",
-    ),
+    gpair,
+    ipair,
 )
 
 with ffile.open("r") as f:
@@ -97,7 +100,7 @@ if args.backend != "yaml":
         f"The serialization backend <bold>{args.backend}</bold> is not supported. Currently, only <bold>yaml</bold> is supported."
     )
 
-options = ["skip-if-missing", "only-serialize", "only-deserialize", "parse-as"]
+options = ["skip-if-missing", "only-serialize", "only-deserialize", "serialize-as", "deserialize-as"]
 hpp = CPPFile(output.name)
 hpp.disclaimer("serialize.py")
 hpp("#pragma once")
@@ -151,18 +154,65 @@ with hpp.scope(f"namespace TKit::{args.backend.capitalize()}", indent=0):
             if namespace != "TKit":
                 hpp(f"using namespace {namespace}")
 
+        with hpp.doc():
+            hpp.brief(
+                f"This is an auto-generated specialization of the placeholder `TKit::Codec` struct containing {args.backend} serialization code for `{clsinfo.name}`."
+            )
+            hpp(
+                f"For serialization to work, this file must be included before any `TKit::Codec` instantiations occur. If `{clsinfo.name}` also includes fields that have automatic serialization code, such files must also be included."
+            )
+            hpp(
+                f"You may customize how each field gets (de)serialized by grouping them with the macro pair `{gpair.begin}` and `{gpair.end}`, and adding options to the group to modify the generated code for the (de)serialization of those fields. The available options are the following:"
+            )
+            hpp(
+                "- skip-if-missing: In deserialization, if the field is not found, skip it instead of raising a runtime error."
+            )
+            hpp("- only-serialize: Only serialize selected fields.")
+            hpp("- only-deserialize: Only deserialize selected fields.")
+            hpp("- serialize-as <type>: Override the field's type and use the provided one when serializing.")
+            hpp("- deserialize-as <type>: Override the field's type and use the provided one when deserializing.")
+            hpp(
+                f'You may specify the above options with the group begin macro: `{gpair.begin}("GroupName", "--skip-if-missing", "serialize-as int")`.'
+            )
+
         with hpp.scope(
             f"template <{clsinfo.template_decl if clsinfo.template_decl is not None else ''}> struct Codec<{clsinfo.name}>",
             closer="};",
         ):
+            with hpp.doc():
+                hpp.brief(f"Encode an instance of type `{clsinfo.name}` into a `Node` (serialization step).")
+                hpp.param("p_Instance", f"An instance of type `{clsinfo.name}`.")
+                hpp.ret("A node with serialization information.")
+
             with hpp.scope(f"static Node Encode(const {clsinfo.name} &p_Instance) noexcept"):
                 hpp("Node node;")
                 for field, options in fields:
                     if in_options("only-deserialize", options):
+                        hpp.comment(f"Skipping {field.name} - It has been set as deserialization only")
                         continue
 
-                    hpp(f'node["{field.name}"] = p_Instance.{field.name};')
+                    vtype = None
+                    for opt in options:
+                        if "serialize-as" in opt:
+                            try:
+                                vtype = opt.split(" ", 1)[1]
+                                hpp.comment(f"The field type of `{field.name}` has been overriden by `{vtype}`.")
+                                break
+                            except IndexError:
+                                Convoy.exit_error(
+                                    f"Failed to parse option: <bold>serialize-as</bold>. Expected type name, but received: <bold>{opt}</bold>. Usage example: <bold>--serialize-as MyDesiredTypeName</bold>"
+                                )
+
+                    if vtype is None:
+                        hpp(f'node["{field.name}"] = p_Instance.{field.name};')
+                    else:
+                        hpp(f'node["{field.name}"] = static_cast<{vtype}>(p_Instance.{field.name});')
                 hpp("return node;")
+
+            with hpp.doc():
+                hpp.brief(f"Decode an instance of type `{clsinfo.name}` from a `Node` (deserialization step).")
+                hpp.param("p_Node", "A node with serialization information.")
+                hpp.param("p_Instance", f"An instance of type `{clsinfo.name}`.")
 
             with hpp.scope(f"static bool Decode(const Node &p_Node, {clsinfo.name} &p_Instance) noexcept"):
                 with hpp.scope("if (!p_Node.IsMap())", delimiters=False):
@@ -170,17 +220,19 @@ with hpp.scope(f"namespace TKit::{args.backend.capitalize()}", indent=0):
 
                 for field, options in fields:
                     if in_options("only-serialize", options):
+                        hpp.comment(f"Skipping `{field.name}` - It has been set as serialization only")
                         continue
 
                     vtype = field.vtype
                     for opt in options:
-                        if "parse-as" in opt:
+                        if "deserialize-as" in opt:
                             try:
                                 vtype = opt.split(" ", 1)[1]
+                                hpp.comment(f"The field type of `{field.name}` has been overriden by `{vtype}`.")
                                 break
                             except IndexError:
                                 Convoy.exit_error(
-                                    f"Failed to parse option: <bold>parse-as</bold>. Expected type name, but received: <bold>{opt}</bold>. Usage example: <bold>--parse-as MyDesiredTypeName</bold>"
+                                    f"Failed to parse option: <bold>deserialize-as</bold>. Expected type name, but received: <bold>{opt}</bold>. Usage example: <bold>--deserialize-as MyDesiredTypeName</bold>"
                                 )
 
                     if in_options("skip-if-missing", options):

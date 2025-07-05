@@ -100,7 +100,9 @@ with hpp.scope("namespace TKit", indent=0):
             hpp.brief(
                 f"This is an auto-generated specialization of the placeholder `Reflect` class containing compile-time and run-time information about `{clsinfo.name}`."
             )
-            hpp("With this specialization, you may query information about the class or struct fields iteratively.")
+            hpp(
+                "With this specialization, you may query information about the class or struct fields iteratively. If used as a default serialization generation with `TKit::Codec` struct, this file must be included as well before template instantiations of `TKit::Codec` occur."
+            )
         with hpp.scope(
             f"template <{clsinfo.template_decl if clsinfo.template_decl is not None else ''}> class Reflect<{clsinfo.name}>",
             closer="};",
