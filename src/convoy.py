@@ -118,6 +118,7 @@ class _MetaConvoy(type):
         self.safe = False
 
         self.__log_label = ""
+        self.__verbose_label = self.__create_verbose_label()
         self.__indent = 0
         self.__no_colors = False
         if self.is_windows:
@@ -314,7 +315,7 @@ class _MetaConvoy(type):
 
     def verbose(self, msg: str, /, *args, **kwargs) -> None:
         if self.is_verbose:
-            print(self.__format(f"{self.__log_label}{msg}"), *args, **kwargs)
+            print(self.__format(f"{self.__log_label}{self.__verbose_label}{msg}"), *args, **kwargs)
 
     def ncheck(self, param: T | None, /, *, msg: str | None = None) -> T:
         if param is None:
@@ -402,6 +403,9 @@ class _MetaConvoy(type):
 
     def __create_log_label(self, msg: str, /) -> str:
         return f"<fblue>[{msg}]</fblue> "
+
+    def __create_verbose_label(self) -> str:
+        return "<fmagenta>[VERBOSE]</fmagenta> "
 
 
 class Convoy(metaclass=_MetaConvoy):
