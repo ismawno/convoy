@@ -95,7 +95,10 @@ class CPParser:
         if not isinstance(code, str):
             code = CPParser.__merge_code(code)
         self.__code = (
-            code.replace("<class", "<typename").replace(", class", ", typename").replace("template ", "template")
+            code.replace("<class", "<typename")
+            .replace(", class", ",typename")
+            .replace(",class", ",typename")
+            .replace("template ", "template")
         )
         self.__macros = macros
 
