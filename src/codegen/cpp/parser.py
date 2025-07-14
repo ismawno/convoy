@@ -72,10 +72,11 @@ class FieldCollection:
 @dataclass(frozen=True)
 class Class:
     name: str
+    parent: str | None
     namespaces: list[str]
     member: FieldCollection
     static: FieldCollection
-    template_decl: str | None
+    tempdecl: str | None
     file: Path | None
 
 
@@ -201,31 +202,34 @@ class CPParser:
         file: Path | None,
         /,
     ) -> Class:
-        clsline = lines[0].replace("template ", "template")
-        name = re.match(rf".*{clstype} ([a-zA-Z0-9_<>, ]+)", clsline)
-        if name is not None:
-            name = name.group(1).strip()
-        else:
-            Convoy.exit_error(f"A match was not found when trying to extract the name of the {clstype}.")
+        clsline = lines[0] if template_line is None else template_line + "\n" + lines[0]
+        pattern = r"(?:template<(.*)>[\n ]*)?(?:class|struct)(?: [a-zA-Z0-9_]+)? ([a-zA-Z0-9_<>, ]+)(?:: ([a-zA-Z0-9_<>, ]+))?"
+        declaration = re.match(pattern, clsline)
+        if declaration is None:
+            Convoy.exit_error(
+                f"A match was not found when trying to extract the name of the {clstype}. The identified declaration was the following: <bold>{clsline}</bold>."
+            )
+        tempdecl = declaration.group(1)
+        name = declaration.group(2)
+        parent = declaration.group(3)
+
+        if name is None:
+            Convoy.exit_error(
+                f"Failed to extract a {clstype} name with the following declaration line: <bold>{clsline}</bold>."
+            )
+        name = name.strip()
+        if tempdecl is not None:
+            tempdecl.strip()
+        if parent is not None:
+            parent.strip()
+
         visibility = "private" if clstype == "class" else "public"
 
-        mtch = re.match(r".*template<(.*?)>", clsline)
-        template_decl = mtch.group(1) if mtch is not None else None
+        if tempdecl is None and template_line is not None:
+            Convoy.exit_error("Template arguments not found, but call to __parse_class suggested there should be.")
 
-        if template_decl is not None and template_line is not None:
-            Convoy.exit_error("Found duplicate template line.")
-
-        if template_decl is None and template_line is not None:
-            template_decl = re.match(r".*template<(.*?)>", template_line)
-            if template_decl is not None:
-                template_decl = template_decl.group(1).replace(" ,", ",")
-            else:
-                Convoy.exit_error(
-                    f"A match was not found when trying to extract the template declaration of the {name} {clstype}."
-                )
-
-        if template_decl is not None and "<" not in name:
-            template_vars = ", ".join([var.split(" ")[1] for var in template_decl.replace(", ", ",").split(",")])
+        if tempdecl is not None and "<" not in name:
+            template_vars = ", ".join([var.split(" ")[1] for var in tempdecl.replace(", ", ",").split(",")])
             name = f"{name}<{template_vars}>"
 
         groups = []
@@ -352,9 +356,10 @@ class CPParser:
 
         return Class(
             name.strip(),
+            parent,
             namespaces,
             member,
             static,
-            template_decl,
+            tempdecl,
             file,
         )

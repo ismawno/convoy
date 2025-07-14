@@ -144,7 +144,7 @@ def generate_serialization_code(hpp: CPPGenerator, classes: ClassCollection) -> 
                 )
 
             with hpp.scope(
-                f"template <{clsinfo.template_decl if clsinfo.template_decl is not None else ''}> struct Codec<{clsinfo.name}>",
+                f"template <{clsinfo.tempdecl if clsinfo.tempdecl is not None else ''}> struct Codec<{clsinfo.name}>",
                 closer="};",
             ):
                 with hpp.doc():
