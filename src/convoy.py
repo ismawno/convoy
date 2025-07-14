@@ -3,6 +3,7 @@ import platform
 import subprocess
 import os
 import ctypes
+import glob
 
 from time import perf_counter
 from pathlib import Path
@@ -179,6 +180,82 @@ class _MetaConvoy(type):
     @log_label.setter
     def log_label(self, msg: str, /) -> None:
         self.__log_label = self.__create_log_label(msg) if msg != "" else ""
+
+    def resolve_paths(
+        self,
+        paths: str | Path | list[str | Path],
+        /,
+        *,
+        cwd: Path | None = None,
+        recursive: bool = False,
+        check_exists: bool = False,
+        require_files: bool = False,
+        require_directories: bool = False,
+        require_single_type: bool = False,
+        exclude_files: bool = False,
+        exclude_directories: bool = False,
+        remove_duplicates: bool = False,
+        mkdir: bool = False,
+    ) -> list[Path]:
+        if require_files and require_directories:
+            Convoy.exit_error(
+                "Cannot set both <bold>require_files</bold> and <bold>require_directories</bold> options."
+            )
+
+        if exclude_files and exclude_directories:
+            Convoy.exit_error(
+                "Cannot set both <bold>exclude_files</bold> and <bold>exclude_directories</bold> options."
+            )
+
+        if require_single_type and (require_directories or require_files):
+            Convoy.exit_error(
+                "The parameter <bold>require_single_type</bold> is not compatible with any other <bold>require</bold> parameter."
+            )
+
+        if not isinstance(paths, list):
+            paths = [paths]
+
+        if cwd is None:
+            cwd = Path(os.getcwd()).resolve()
+
+        tp = None
+
+        def run_checks(path: Path, /) -> Path | None:
+            if check_exists and not path.exists():
+                Convoy.exit_error(f"The path <underline>{path}</underline> does not exist.")
+            if require_files and not path.is_file():
+                Convoy.exit_error(f"The path <underline>{path}</underline> is not a file.")
+            if require_directories and not path.is_dir():
+                Convoy.exit_error(f"The path <underline>{path}</underline> is not a directory.")
+            if (exclude_files and not path.is_file()) or (exclude_directories and not path.is_dir()):
+                return None
+            nonlocal tp
+            if tp is None:
+                tp = "file" if path.is_file() else "dir"
+            elif (tp == "file" and not path.is_file()) or (tp == "dir" and not path.is_dir()):
+                Convoy.exit_error(
+                    "Paths are not the same type, as they contain files and directories. For this check to be effective, all paths pointing to files should exist."
+                )
+            if mkdir and not path.is_file() and not path.suffix:
+                path.mkdir(parents=True, exist_ok=True)
+            return path
+
+        result: list[Path] = []
+        for path in paths:
+            if isinstance(path, Path):
+                path = str(path)
+            if glob.has_magic(path):
+                iterator = cwd.rglob(path) if recursive else cwd.glob(path)
+                for p in iterator:
+                    p = run_checks(p.resolve())
+                    if p is not None:
+                        result.append(p)
+            else:
+                path = run_checks(Path(path).resolve())
+                if path is not None:
+                    result.append(path)
+
+        return result if not remove_duplicates else list(set(result))
 
     def linux_distro(self) -> str | None:
         try:

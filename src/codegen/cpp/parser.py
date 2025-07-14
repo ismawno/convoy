@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import re
 
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from convoy import Convoy
 
@@ -68,11 +68,14 @@ class Class:
     memfields: FieldCollection
     statfields: FieldCollection
     template_decl: str | None
+    file: Path | None
 
 
-class ClassParser:
+class CPParser:
 
-    def __init__(self, code: str, /, *, macros: ControlMacros | None = None) -> None:
+    def __init__(self, code: str | dict[Path, str], /, *, macros: ControlMacros | None = None) -> None:
+        if not isinstance(code, str):
+            code = CPParser.__merge_code(code)
         self.__code = (
             code.replace("<class", "<typename").replace(", class", ", typename").replace("template ", "template")
         )
@@ -87,7 +90,7 @@ class ClassParser:
         return self.__macros.declare in self.__code
 
     def remove_comments(self) -> None:
-        self.__code = re.sub(r"//.*", "", self.__code)
+        self.__code = re.sub(r"//(?!\s*CPParser file:).*", "", self.__code)
         self.__code = re.sub(r"/\*.*?\*/", "", self.__code, flags=re.DOTALL)
 
     def parse(
@@ -105,7 +108,11 @@ class ClassParser:
         lines = self.__code.split(line_delm)
         classes = []
         namespaces = []
+        file = None
         for i, line in enumerate(lines):
+            if "CPParser file" in line:
+                file = Path(line.split(": ", 1)[1].strip("\n").strip())
+
             if line.endswith(";"):
                 continue
 
@@ -144,7 +151,7 @@ class ClassParser:
                 else None
             )
             clstype = "class" if is_class else "struct"
-            clinfo = self.__parse_class(sublines, template_line, clstype, namespaces, reserved_group_names)
+            clinfo = self.__parse_class(sublines, template_line, clstype, namespaces, reserved_group_names, file)
 
             Convoy.verbose(f"Found and parsed <bold>{clinfo.name}</bold> {clstype}.")
             for field in clinfo.memfields.all:
@@ -155,6 +162,13 @@ class ClassParser:
 
         return classes
 
+    @classmethod
+    def __merge_code(cls, code: dict[Path, str], /) -> str:
+        merged = ""
+        for p, c in code.items():
+            merged += f"\n// CPParser file: {p}\n" + c
+        return merged
+
     def __parse_class(
         self,
         lines: list[str],
@@ -162,6 +176,7 @@ class ClassParser:
         clstype: str,
         namespaces: list[str],
         reserved_group_names: list[str],
+        file: Path | None,
         /,
     ) -> Class:
         clsline = lines[0].replace("template ", "template")
@@ -330,4 +345,5 @@ class ClassParser:
             FieldCollection(nstatic_fields, nstatic_fields_per_type, nstatic_fields_per_group),
             FieldCollection(static_fields, static_fields_per_type, static_fields_per_group),
             template_decl,
+            file,
         )
