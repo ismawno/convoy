@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import sys
@@ -56,19 +56,37 @@ class Field:
 
 @dataclass(frozen=True)
 class FieldCollection:
-    all: list[Field]
-    per_type: dict[str, list[Field]]
-    per_group: dict[Group, list[Field]]
+    fields: list[Field] = field(default_factory=list)
+    per_name: dict[str, Field] = field(default_factory=dict)
+    per_type: dict[str, list[Field]] = field(default_factory=dict)
+    per_group: dict[Group, list[Field]] = field(default_factory=dict)
+
+    def add(self, f: Field, /) -> None:
+        self.fields.append(f)
+        self.per_name[f.name] = f
+        self.per_type.setdefault(f.vtype, []).append(f)
+        for g in f.groups:
+            self.per_group.setdefault(g, []).append(f)
 
 
 @dataclass(frozen=True)
 class Class:
     name: str
     namespaces: list[str]
-    memfields: FieldCollection
-    statfields: FieldCollection
+    member: FieldCollection
+    static: FieldCollection
     template_decl: str | None
     file: Path | None
+
+
+@dataclass(frozen=True)
+class ClassCollection:
+    classes: list[Class] = field(default_factory=list)
+    per_name: dict[str, Class] = field(default_factory=dict)
+
+    def add(self, c: Class, /) -> None:
+        self.classes.append(c)
+        self.per_name[c.name] = c
 
 
 class CPParser:
@@ -98,7 +116,7 @@ class CPParser:
         *,
         line_delm: str = "\n",
         reserved_group_names: str | list[str] | None = None,
-    ) -> list[Class]:
+    ) -> ClassCollection:
 
         if isinstance(reserved_group_names, str):
             reserved_group_names = [reserved_group_names]
@@ -106,7 +124,7 @@ class CPParser:
             reserved_group_names = []
 
         lines = self.__code.split(line_delm)
-        classes = []
+        classes = ClassCollection()
         namespaces = []
         file = None
         for i, line in enumerate(lines):
@@ -154,11 +172,12 @@ class CPParser:
             clinfo = self.__parse_class(sublines, template_line, clstype, namespaces, reserved_group_names, file)
 
             Convoy.verbose(f"Found and parsed <bold>{clinfo.name}</bold> {clstype}.")
-            for field in clinfo.memfields.all:
+            for field in clinfo.member.fields:
                 Convoy.verbose(f"  -Registered field <bold>{field.as_str(clinfo.name, is_static=False)}</bold>.")
-            for field in clinfo.statfields.all:
+            for field in clinfo.static.fields:
                 Convoy.verbose(f"  -Registered field <bold>{field.as_str(clinfo.name, is_static=True)}</bold>.")
-            classes.append(clinfo)
+
+            classes.add(clinfo)
 
         return classes
 
@@ -208,13 +227,8 @@ class CPParser:
 
         groups = []
 
-        nstatic_fields = []
-        nstatic_fields_per_type = {}
-        nstatic_fields_per_group = {}
-
-        static_fields = []
-        static_fields_per_type = {}
-        static_fields_per_group = {}
+        static = FieldCollection()
+        member = FieldCollection()
 
         scope_counter = 0
         ignore = False
@@ -319,14 +333,8 @@ class CPParser:
                 vtype.replace(",", ", "),
                 list({g.name: g for g in groups}.values()),
             )
-            fields = static_fields if is_static else nstatic_fields
-            fields_per_type = static_fields_per_type if is_static else nstatic_fields_per_type
-            fields_per_group = static_fields_per_group if is_static else nstatic_fields_per_group
-
-            fields.append(field)
-            fields_per_type.setdefault(field.vtype, []).append(field)
-            for group in groups:
-                fields_per_group.setdefault(group, []).append(field)
+            fields = static if is_static else member
+            fields.add(field)
 
         if self.__macros is not None:
             if ignore and self.__macros.ignore is not None:
@@ -342,8 +350,8 @@ class CPParser:
         return Class(
             name.strip(),
             namespaces,
-            FieldCollection(nstatic_fields, nstatic_fields_per_type, nstatic_fields_per_group),
-            FieldCollection(static_fields, static_fields_per_type, static_fields_per_group),
+            member,
+            static,
             template_decl,
             file,
         )

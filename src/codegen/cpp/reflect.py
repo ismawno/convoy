@@ -1,5 +1,5 @@
 from generator import CPPGenerator
-from parser import ControlMacros, MacroPair, Class, Field, FieldCollection
+from parser import ControlMacros, MacroPair, Field, FieldCollection, ClassCollection
 from orchestrator import CPPOrchestrator
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
@@ -51,7 +51,7 @@ macros = ControlMacros(
 orchestrator = CPPOrchestrator.from_cli_arguments(args, macros=macros)
 
 
-def generate_reflection_code(hpp: CPPGenerator, classes: list[Class], /) -> None:
+def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> None:
     hpp.include("tkit/container/array.hpp", quotes=True)
     hpp.include("tkit/reflection/reflect.hpp", quotes=True)
     hpp.include("tkit/utils/concepts.hpp", quotes=True)
@@ -59,7 +59,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: list[Class], /) -> None
     hpp.include("string_view")
 
     with hpp.scope("namespace TKit", indent=0):
-        for clsinfo in classes:
+        for clsinfo in classes.classes:
             for namespace in clsinfo.namespaces:
                 if namespace != "TKit":
                     hpp(f"using namespace {namespace};", unique_line=True)
@@ -82,14 +82,14 @@ def generate_reflection_code(hpp: CPPGenerator, classes: list[Class], /) -> None
                     hpp("Protected = 1,")
                     hpp("Public = 2")
 
-                hpp(f"static constexpr bool HasMemberFields = {'true' if clsinfo.memfields.all else 'false'};")
-                hpp(f"static constexpr bool HasStaticFields = {'true' if clsinfo.statfields.all else 'false'};")
+                hpp(f"static constexpr bool HasMemberFields = {'true' if clsinfo.member.fields else 'false'};")
+                hpp(f"static constexpr bool HasStaticFields = {'true' if clsinfo.static.fields else 'false'};")
 
                 def generate_reflect_body(fcollection: FieldCollection, /, *, is_static: bool) -> None:
                     modifier = "Static" if is_static else "Member"
 
                     hpp("public:")
-                    dtype = "u8" if len(clsinfo.memfields.per_group) < 256 else "u16"
+                    dtype = "u8" if len(clsinfo.member.per_group) < 256 else "u16"
                     if fcollection.per_group:
                         with hpp.doc():
                             hpp.brief(
@@ -310,7 +310,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: list[Class], /) -> None
                                 "std::apply([&p_Fun](const auto &...p_Field) {(std::forward<Ref_Fun>(p_Fun)(p_Field), ...);}, p_Fields);"
                             )
 
-                    create_get_fields_method(fcollection.all)
+                    create_get_fields_method(fcollection.fields)
                     create_for_each_method()
 
                     if fcollection.per_group:
@@ -396,10 +396,10 @@ def generate_reflection_code(hpp: CPPGenerator, classes: list[Class], /) -> None
                         create_get_array_method(group=group.name)
                         create_get_tuple_method(group=group.name)
 
-                if clsinfo.memfields.all:
-                    generate_reflect_body(clsinfo.memfields, is_static=False)
-                if clsinfo.statfields.all:
-                    generate_reflect_body(clsinfo.statfields, is_static=True)
+                if clsinfo.member.fields:
+                    generate_reflect_body(clsinfo.member, is_static=False)
+                if clsinfo.static.fields:
+                    generate_reflect_body(clsinfo.static, is_static=True)
 
 
 orchestrator.generate(generate_reflection_code, disclaimer="reflect.py")

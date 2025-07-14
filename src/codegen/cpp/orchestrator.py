@@ -1,7 +1,7 @@
 from pathlib import Path
 from argparse import ArgumentParser, Namespace
 from generator import CPPGenerator
-from parser import CPParser, ControlMacros, Class
+from parser import CPParser, ClassCollection, ControlMacros
 from collections.abc import Callable
 
 import sys
@@ -54,7 +54,7 @@ class CPPOrchestrator:
         self.__generators = self.__create_generators()
 
     def generate(
-        self, generator: Callable[[CPPGenerator, list[Class]], None], /, *, disclaimer: str | None = None
+        self, generator: Callable[[CPPGenerator, ClassCollection], None], /, *, disclaimer: str | None = None
     ) -> None:
         for out, classes in self.__outputs.items():
             if not classes:
@@ -121,8 +121,8 @@ class CPPOrchestrator:
         return {out: CPPGenerator() for out in self.__outputs}
 
     def __validate_and_resolve_outputs(
-        self, inputs: list[Path], outputs: list[Path], classes: list[Class], /
-    ) -> dict[Path, list[Class]]:
+        self, inputs: list[Path], outputs: list[Path], classes: ClassCollection, /
+    ) -> dict[Path, ClassCollection]:
         if not inputs or not outputs:
             Convoy.exit_error("Must at least provide an input and an output.")
 
@@ -143,38 +143,44 @@ class CPPOrchestrator:
                 Convoy.exit_error("If multiple output paths are provided, they must match the amount of input files.")
 
             inp_to_out = {inp: out for inp, out in zip(inputs, outputs)}
-            result: dict[Path, list[Class]] = {}
-            for c in classes:
+            result: dict[Path, ClassCollection] = {}
+            for c in classes.classes:
                 if c.file is None:
                     Convoy.exit_error(f"The class <bold>{c.name}</bold> has no file attribute.")
                 out = inp_to_out[c.file]
-                result.setdefault(out, []).append(c)
+                result.setdefault(out, ClassCollection()).add(c)
 
             return result
 
         return {outputs[0]: classes}
 
     @classmethod
-    def __resolve_outputs_with_classes(cls, classes: list[Class], directory: Path, /) -> dict[Path, list[Class]]:
+    def __resolve_outputs_with_classes(
+        cls, classes: ClassCollection, directory: Path, /
+    ) -> dict[Path, ClassCollection]:
         outputs = {}
         forbidden = r"<>:\"/\|?*"
-        for c in classes:
+        for c in classes.classes:
             if any([f in c.name for f in forbidden]):
                 Convoy.exit_error(
                     f"The class name <bold>{c.name}</bold> contains forbidden characters that cannot be used as a file name. To avoid this error, do not set the <bold>--file-per-class</bold> option and choose another way to export the generated code."
                 )
             name = f"{Convoy.to_snake_case(c.name)}.hpp"
-            outputs[directory / name] = [c]
+            cc = ClassCollection()
+            cc.add(c)
+            outputs[directory / name] = cc
 
         return outputs
 
     @classmethod
-    def __resolve_outputs_with_inputs(cls, classes: list[Class], directory: Path, /) -> dict[Path, list[Class]]:
-        outputs: dict[Path, list[Class]] = {}
-        for c in classes:
+    def __resolve_outputs_with_inputs(
+        cls, classes: ClassCollection, directory: Path, /
+    ) -> dict[Path, ClassCollection]:
+        outputs: dict[Path, ClassCollection] = {}
+        for c in classes.classes:
             if c.file is None:
                 Convoy.exit_error(f"The class <bold>{c.name}</bold> has no file attribute.")
-            outputs.setdefault(directory / c.file.name, []).append(c)
+            outputs.setdefault(directory / c.file.name, ClassCollection()).add(c)
 
         return outputs
 

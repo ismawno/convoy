@@ -1,5 +1,5 @@
 from generator import CPPGenerator
-from parser import ControlMacros, MacroPair, Class, Field
+from parser import ControlMacros, MacroPair, ClassCollection, Field, Class
 from orchestrator import CPPOrchestrator
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
@@ -105,17 +105,17 @@ def get_fields_with_options(clsinfo: Class, /) -> list[tuple[Field, list[str]]]:
             ensure_options_consistency(opts)
             result.append((field, opts))
 
-    gather_fields(clsinfo.memfields.all)
-    gather_fields(clsinfo.statfields.all)
+    gather_fields(clsinfo.member.fields)
+    gather_fields(clsinfo.static.fields)
 
     return result
 
 
-def generate_serialization_code(hpp: CPPGenerator, classes: list[Class]) -> None:
+def generate_serialization_code(hpp: CPPGenerator, classes: ClassCollection) -> None:
     hpp.include(f"tkit/serialization/{backend}/codec.hpp", quotes=True)
 
     with hpp.scope(f"namespace TKit::{backend.capitalize()}", indent=0):
-        for clsinfo in classes:
+        for clsinfo in classes.classes:
             fields = get_fields_with_options(clsinfo)
 
             for namespace in clsinfo.namespaces:
