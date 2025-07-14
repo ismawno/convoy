@@ -29,12 +29,10 @@ class CPPOrchestrator:
         inputs = Convoy.resolve_paths(
             rinputs, recursive=recursive, check_exists=True, require_files=True, remove_duplicates=True
         )
-        outputs = Convoy.resolve_paths(
-            routputs, recursive=recursive, require_single_type=True, mkdir=True, remove_duplicates=True
-        )
+        outputs = Convoy.resolve_paths(routputs, recursive=recursive, remove_duplicates=True)
 
         def log_paths(name: str, paths: list[Path], /) -> None:
-            Convoy.verbose(f"Scanner resolved {len(paths)} {name} files.")
+            Convoy.verbose(f"Scanner resolved {len(paths)} {name} paths.")
             for p in paths:
                 Convoy.verbose(f" - <underline>{p}</underline>")
 
@@ -165,7 +163,8 @@ class CPPOrchestrator:
                 Convoy.exit_error(
                     f"The class name <bold>{c.name}</bold> contains forbidden characters that cannot be used as a file name. To avoid this error, do not set the <bold>--file-per-class</bold> option and choose another way to export the generated code."
                 )
-            outputs[directory / c.name] = [c]
+            name = f"{Convoy.to_snake_case(c.name)}.hpp"
+            outputs[directory / name] = [c]
 
         return outputs
 

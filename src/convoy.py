@@ -181,6 +181,41 @@ class _MetaConvoy(type):
     def log_label(self, msg: str, /) -> None:
         self.__log_label = self.__create_log_label(msg) if msg != "" else ""
 
+    def to_snake_case(self, s: str, /) -> str:
+        result = []
+        for c in s:
+            if c.isupper():
+                result.append(f"_{c.lower()}" if result else c.lower())
+            else:
+                result.append(c)
+        return "".join(result)
+
+    def to_camel_case(self, s: str, /) -> str:
+        result = []
+        s = s[:1].lower() + s[1:]
+        for c in s:
+            if c == "_":
+                result.append(c.upper())
+            else:
+                result.append(c)
+        return "".join(result)
+
+    def to_pascal_case(self, s: str, /) -> str:
+        result = []
+        s = s.capitalize()
+        for c in s:
+            if c == "_":
+                result.append(c.upper())
+            else:
+                result.append(c)
+        return "".join(result)
+
+    def is_file(self, p: Path, /) -> bool:
+        return bool(p.is_file() or p.suffix)
+
+    def is_dir(self, p: Path, /) -> bool:
+        return bool(p.is_dir() or not p.suffix)
+
     def resolve_paths(
         self,
         paths: str | Path | list[str | Path],
@@ -191,7 +226,6 @@ class _MetaConvoy(type):
         check_exists: bool = False,
         require_files: bool = False,
         require_directories: bool = False,
-        require_single_type: bool = False,
         exclude_files: bool = False,
         exclude_directories: bool = False,
         remove_duplicates: bool = False,
@@ -207,36 +241,24 @@ class _MetaConvoy(type):
                 "Cannot set both <bold>exclude_files</bold> and <bold>exclude_directories</bold> options."
             )
 
-        if require_single_type and (require_directories or require_files):
-            Convoy.exit_error(
-                "The parameter <bold>require_single_type</bold> is not compatible with any other <bold>require</bold> parameter."
-            )
-
         if not isinstance(paths, list):
             paths = [paths]
 
         if cwd is None:
             cwd = Path(os.getcwd()).resolve()
 
-        tp = None
-
         def run_checks(path: Path, /) -> Path | None:
             if check_exists and not path.exists():
                 Convoy.exit_error(f"The path <underline>{path}</underline> does not exist.")
-            if require_files and not path.is_file():
+            if require_files and not self.is_file(path):
                 Convoy.exit_error(f"The path <underline>{path}</underline> is not a file.")
-            if require_directories and not path.is_dir():
+            if require_directories and not self.is_dir(path):
                 Convoy.exit_error(f"The path <underline>{path}</underline> is not a directory.")
-            if (exclude_files and not path.is_file()) or (exclude_directories and not path.is_dir()):
+
+            if (exclude_files and not self.is_file(path)) or (exclude_directories and not self.is_dir(path)):
                 return None
-            nonlocal tp
-            if tp is None:
-                tp = "file" if path.is_file() else "dir"
-            elif (tp == "file" and not path.is_file()) or (tp == "dir" and not path.is_dir()):
-                Convoy.exit_error(
-                    "Paths are not the same type, as they contain files and directories. For this check to be effective, all paths pointing to files should exist."
-                )
-            if mkdir and not path.is_file() and not path.suffix:
+
+            if mkdir and not self.is_file(path):
                 path.mkdir(parents=True, exist_ok=True)
             return path
 
