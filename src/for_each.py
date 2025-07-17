@@ -22,7 +22,7 @@ def parse_arguments() -> Namespace:
         "--directories",
         required=True,
         nargs="+",
-        type=str,
+        type=Path,
         help="The directories to execute the command in.",
     )
     parser.add_argument(
@@ -85,13 +85,23 @@ Convoy.safe = args.safe
 Convoy.all_yes = args.yes
 Convoy.is_verbose = args.verbose
 cmds: list[str] = args.cmds
-wildcards: list[str] = args.directories
+directories = Convoy.resolve_paths(
+    args.directories,
+    recursive=args.recursive,
+    require_directories=True,
+    remove_duplicates=True,
+    check_exists=not args.skip_if_missing,
+)
+Convoy.verbose(f"Resolved {len(directories)} input directories:")
+for dir in directories:
+    Convoy.verbose(f" - <underline>{dir}</underline>")
+
 if not args.nested:
     if len(cmds) == 1:
-        cmds *= len(wildcards)
-    if len(cmds) != len(wildcards):
+        cmds *= len(directories)
+    if len(cmds) != len(directories):
         Convoy.exit_error(
-            f"The number of commands provided must match the number of directories provided if the former is more than one. Commands: <bold>{', '.join(cmds)} ({len(cmds)})</bold>, Directories: <bold>{', '.join(wildcards)} ({len(wildcards)})</bold>."
+            f"The number of commands provided must match the number of directories provided if the former is more than one. Commands: <bold>{', '.join(cmds)} ({len(cmds)})</bold>, Directories: <bold>{', '.join([str(dir) for dir in directories])} ({len(directories)})</bold>."
         )
 
 wdir = Path.cwd()
@@ -99,9 +109,6 @@ wdir = Path.cwd()
 
 def process_directory(path: Path, cmd: str, /) -> None:
     if not path.exists():
-        if not args.skip_if_missing:
-            Convoy.exit_error(f"Directory not found: <underline>{path}</underline>")
-
         Convoy.warning(f"Skipping missing directory: <underline>{path}</underline>")
         return
 
@@ -112,26 +119,10 @@ def process_directory(path: Path, cmd: str, /) -> None:
         Convoy.warning(f"Command <bold>{cmd}</bold> failed at <underline>{path}</underline>.")
 
 
-def process_widlcard(wcard: str, cmd: str, /) -> None:
-    path = Path(wcard).resolve()
-    if path.exists():
-        if path.is_dir():
-            process_directory(path, cmd)
-            return
-        Convoy.exit_error(f"The only path provided is not a directory: <underline>{path}</underline>")
-
-    for path in wdir.rglob(wcard) if args.recursive else wdir.glob(wcard):
-        path = path.resolve()
-        if not path.is_dir():
-            Convoy.verbose(f"Skipping non-directory: <underline>{path}</underline>")
-            continue
-        process_directory(path, cmd)
-
-
 if not args.nested:
-    for wcard, cmd in zip(wildcards, cmds):
-        process_widlcard(wcard, cmd)
+    for dir, cmd in zip(directories, cmds):
+        process_directory(dir, cmd)
 else:
-    for wcard in wildcards:
+    for dir in directories:
         for cmd in cmds:
-            process_widlcard(wcard, cmd)
+            process_directory(dir, cmd)
