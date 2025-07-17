@@ -19,7 +19,7 @@ class CPPOrchestrator:
         routputs: str | Path | list[str | Path],
         /,
         *parse_args,
-        macros: ControlMacros | None = None,
+        macros: ControlMacros,
         recursive: bool = False,
         file_per_class: bool = False,
         **parse_kwargs,
@@ -71,9 +71,15 @@ class CPPOrchestrator:
             gen.write(out)
 
     @classmethod
-    def from_cli_arguments(cls, args: Namespace, /, *, macros: ControlMacros | None = None):
+    def from_cli_arguments(cls, args: Namespace, /, *parser_args, macros: ControlMacros, **parser_kwargs):
         return cls(
-            args.input, args.output, macros=macros, recursive=args.recursive, file_per_class=args.file_per_class
+            args.input,
+            args.output,
+            *parser_args,
+            macros=macros,
+            recursive=args.recursive,
+            file_per_class=args.file_per_class,
+            **parser_kwargs,
         )
 
     @classmethod
@@ -146,7 +152,7 @@ class CPPOrchestrator:
             result: dict[Path, ClassCollection] = {}
             for c in classes.classes:
                 if c.file is None:
-                    Convoy.exit_error(f"The class <bold>{c.name}</bold> has no file attribute.")
+                    Convoy.exit_error(f"The class <bold>{c.id.identifier}</bold> has no file attribute.")
                 out = inp_to_out[c.file]
                 result.setdefault(out, ClassCollection()).add(c)
 
@@ -160,14 +166,15 @@ class CPPOrchestrator:
     ) -> dict[Path, ClassCollection]:
         outputs = {}
         forbidden = r"<>:\"/\|?*"
-        for c in classes.classes:
-            if any([f in c.name for f in forbidden]):
+
+        for name, cs in classes.per_name.items():
+            if any(f in name for f in forbidden):
                 Convoy.exit_error(
-                    f"The class name <bold>{c.name}</bold> contains forbidden characters that cannot be used as a file name. To avoid this error, do not set the <bold>--file-per-class</bold> option and choose another way to export the generated code."
+                    f"The class name <bold>{name}</bold> contains forbidden characters that cannot be used as a file name. To avoid this error, do not set the <bold>--file-per-class</bold> option and choose another way to export the generated code."
                 )
-            name = f"{Convoy.to_snake_case(c.name)}.hpp"
             cc = ClassCollection()
-            cc.add(c)
+            for c in cs:
+                cc.add(c)
             outputs[directory / name] = cc
 
         return outputs
@@ -179,13 +186,13 @@ class CPPOrchestrator:
         outputs: dict[Path, ClassCollection] = {}
         for c in classes.classes:
             if c.file is None:
-                Convoy.exit_error(f"The class <bold>{c.name}</bold> has no file attribute.")
+                Convoy.exit_error(f"The class <bold>{c.id.identifier}</bold> has no file attribute.")
             outputs.setdefault(directory / c.file.name, ClassCollection()).add(c)
 
         return outputs
 
     @classmethod
-    def __create_parser(cls, inputs: list[Path], /, *, macros: ControlMacros | None = None) -> CPParser:
+    def __create_parser(cls, inputs: list[Path], /, *, macros: ControlMacros) -> CPParser:
         code = {}
         for inp in inputs:
             with open(inp, "r") as f:

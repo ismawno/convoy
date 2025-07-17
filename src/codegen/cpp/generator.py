@@ -103,13 +103,13 @@ class CPPGenerator:
         )
         cfpath = shutil.which("clang-format")
         if cfpath is None:
-            Convoy.verbose("<fyellow><bold>clang-format</bold> was not found.")
+            Convoy.warning("<bold>clang-format</bold> was not found.")
             return
 
         if Convoy.run_process_success([str(cfpath), "-i", str(path)]):
             Convoy.verbose("Successfully formatted.")
         else:
-            Convoy.verbose("<fyellow>Failed to run <bold>clang-format</bold>.")
+            Convoy.warning("Failed to run <bold>clang-format</bold>.")
 
     def __assert_doc(self) -> None:
         if not self.__doc:

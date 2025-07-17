@@ -45,7 +45,7 @@ def parse_arguments() -> Namespace:
     return parser.parse_args()
 
 
-Convoy.log_label = "SERIALIZE"
+Convoy.program_label = "SERIALIZE"
 args = parse_arguments()
 Convoy.is_verbose = args.verbose
 
@@ -124,10 +124,10 @@ def generate_serialization_code(hpp: CPPGenerator, classes: ClassCollection) -> 
 
             with hpp.doc():
                 hpp.brief(
-                    f"This is an auto-generated specialization of the placeholder `TKit::Codec` struct containing {backend} serialization code for `{clsinfo.name}`."
+                    f"This is an auto-generated specialization of the placeholder `TKit::Codec` struct containing {backend} serialization code for `{clsinfo.id.identifier}`."
                 )
                 hpp(
-                    f"For serialization to work, this file must be included before any `TKit::Codec` instantiations occur. If `{clsinfo.name}` also includes fields that have automatic serialization code, such files must also be included."
+                    f"For serialization to work, this file must be included before any `TKit::Codec` instantiations occur. If `{clsinfo.id.identifier}` also includes fields that have automatic serialization code, such files must also be included."
                 )
                 hpp(
                     f"You may customize how each field gets (de)serialized by grouping them with the macro pair `{gpair.begin}` and `{gpair.end}`, and adding options to the group to modify the generated code for the (de)serialization of those fields. The available options are the following:"
@@ -144,15 +144,17 @@ def generate_serialization_code(hpp: CPPGenerator, classes: ClassCollection) -> 
                 )
 
             with hpp.scope(
-                f"template <{clsinfo.tempdecl if clsinfo.tempdecl is not None else ''}> struct Codec<{clsinfo.name}>",
+                f"template <{clsinfo.id.templdecl if clsinfo.id.templdecl is not None else ''}> struct Codec<{clsinfo.id.identifier}>",
                 closer="};",
             ):
                 with hpp.doc():
-                    hpp.brief(f"Encode an instance of type `{clsinfo.name}` into a `Node` (serialization step).")
-                    hpp.param("p_Instance", f"An instance of type `{clsinfo.name}`.")
+                    hpp.brief(
+                        f"Encode an instance of type `{clsinfo.id.identifier}` into a `Node` (serialization step)."
+                    )
+                    hpp.param("p_Instance", f"An instance of type `{clsinfo.id.identifier}`.")
                     hpp.ret("A node with serialization information.")
 
-                with hpp.scope(f"static Node Encode(const {clsinfo.name} &p_Instance) noexcept"):
+                with hpp.scope(f"static Node Encode(const {clsinfo.id.identifier} &p_Instance) noexcept"):
                     hpp("Node node;")
                     for field, options in fields:
                         if in_options("only-deserialize", options):
@@ -178,11 +180,15 @@ def generate_serialization_code(hpp: CPPGenerator, classes: ClassCollection) -> 
                     hpp("return node;")
 
                 with hpp.doc():
-                    hpp.brief(f"Decode an instance of type `{clsinfo.name}` from a `Node` (deserialization step).")
+                    hpp.brief(
+                        f"Decode an instance of type `{clsinfo.id.identifier}` from a `Node` (deserialization step)."
+                    )
                     hpp.param("p_Node", "A node with serialization information.")
-                    hpp.param("p_Instance", f"An instance of type `{clsinfo.name}`.")
+                    hpp.param("p_Instance", f"An instance of type `{clsinfo.id.identifier}`.")
 
-                with hpp.scope(f"static bool Decode(const Node &p_Node, {clsinfo.name} &p_Instance) noexcept"):
+                with hpp.scope(
+                    f"static bool Decode(const Node &p_Node, {clsinfo.id.identifier} &p_Instance) noexcept"
+                ):
                     with hpp.scope("if (!p_Node.IsMap())", delimiters=False):
                         hpp("return false;")
 

@@ -30,7 +30,7 @@ def parse_arguments() -> Namespace:
     return parser.parse_args()
 
 
-Convoy.log_label = "REFLECT"
+Convoy.program_label = "REFLECT"
 args = parse_arguments()
 Convoy.is_verbose = args.verbose
 
@@ -48,7 +48,7 @@ macros = ControlMacros(
     ipair,
 )
 
-orchestrator = CPPOrchestrator.from_cli_arguments(args, macros=macros)
+orchestrator = CPPOrchestrator.from_cli_arguments(args, macros=macros, reserved_group_names="Static")
 
 
 def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> None:
@@ -66,13 +66,13 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
 
             with hpp.doc():
                 hpp.brief(
-                    f"This is an auto-generated specialization of the placeholder `Reflect` class containing compile-time and run-time information about `{clsinfo.name}`."
+                    f"This is an auto-generated specialization of the placeholder `Reflect` class containing compile-time and run-time information about `{clsinfo.id.identifier}`."
                 )
                 hpp(
                     "With this specialization, you may query information about the class or struct fields iteratively. If used as a default serialization generation with `TKit::Codec` struct, this file must be included as well before template instantiations of `TKit::Codec` occur."
                 )
             with hpp.scope(
-                f"template <{clsinfo.tempdecl if clsinfo.tempdecl is not None else ''}> class Reflect<{clsinfo.name}>",
+                f"template <{clsinfo.id.templdecl if clsinfo.id.templdecl is not None else ''}> class Reflect<{clsinfo.id.identifier}>",
                 closer="};",
             ):
                 hpp("public:")
@@ -103,7 +103,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
 
                     with hpp.doc():
                         hpp.brief(
-                            f"Encapsulates specific information about a `{clsinfo.name}` {modifier.lower()} field."
+                            f"Encapsulates specific information about a `{clsinfo.id.identifier}` {modifier.lower()} field."
                         )
                         hpp("You may access an arbitrary field's value at run-time with the help of this struct.")
                         hpp(
@@ -117,7 +117,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                         if is_static:
                             hpp("Ref_Type *Pointer = nullptr;")
                         else:
-                            hpp(f"Ref_Type {clsinfo.name}::* Pointer = nullptr;")
+                            hpp(f"Ref_Type {clsinfo.id.identifier}::* Pointer = nullptr;")
                         hpp("FieldVisibility Visibility{};")
 
                         with hpp.scope("operator bool() const noexcept"):
@@ -128,27 +128,29 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                             def create_get_doc() -> None:
                                 with hpp.doc():
                                     hpp.brief(
-                                        f"Given an instance of `{clsinfo.name}`, access the value of the field that is currently represented."
+                                        f"Given an instance of `{clsinfo.id.identifier}`, access the value of the field that is currently represented."
                                     )
-                                    hpp.param("p_Instance", f"An instance of type `{clsinfo.name}`.")
+                                    hpp.param("p_Instance", f"An instance of type `{clsinfo.id.identifier}`.")
                                     hpp.ret(f"The value of the field for the instance.")
 
                             create_get_doc()
-                            with hpp.scope(f"Ref_Type &Get({clsinfo.name} &p_Instance) const noexcept"):
+                            with hpp.scope(f"Ref_Type &Get({clsinfo.id.identifier} &p_Instance) const noexcept"):
                                 hpp("return p_Instance.*Pointer;")
 
                             create_get_doc()
-                            with hpp.scope(f"const Ref_Type &Get(const {clsinfo.name} &p_Instance) const noexcept"):
+                            with hpp.scope(
+                                f"const Ref_Type &Get(const {clsinfo.id.identifier} &p_Instance) const noexcept"
+                            ):
                                 hpp("return p_Instance.*Pointer;")
 
                             with hpp.doc():
                                 hpp.brief(
-                                    f"Given an instance of `{clsinfo.name}`, set the value of the field that is currently represented."
+                                    f"Given an instance of `{clsinfo.id.identifier}`, set the value of the field that is currently represented."
                                 )
-                                hpp.param("p_Instance", f"An instance of type `{clsinfo.name}`.")
+                                hpp.param("p_Instance", f"An instance of type `{clsinfo.id.identifier}`.")
                                 hpp.param("p_Value", "The value to set.")
                             with hpp.scope(
-                                f"template <std::convertible_to<Ref_Type> U> void Set({clsinfo.name} &p_Instance, U &&p_Value) const noexcept"
+                                f"template <std::convertible_to<Ref_Type> U> void Set({clsinfo.id.identifier} &p_Instance, U &&p_Value) const noexcept"
                             ):
                                 hpp("p_Instance.*Pointer = std::forward<U>(p_Value);")
 
@@ -183,7 +185,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                         def replacer(vtype: str, /) -> str:
                             return vtype.replace('"', r"\"")
 
-                        return f'{modifier}Field<{field.vtype}>{{"{field.name}", "{replacer(field.vtype)}", &{clsinfo.name}::{field.name}, FieldVisibility::{field.visibility.capitalize()}}}'
+                        return f'{modifier}Field<{field.vtype}>{{"{field.name}", "{replacer(field.vtype)}", &{clsinfo.id.identifier}::{field.name}, FieldVisibility::{field.visibility.capitalize()}}}'
 
                     def create_cpp_fields_sequence(fields: list[Field], /, *, group: str | None = None) -> list[str]:
                         return [

@@ -57,7 +57,7 @@ if args.safe and args.yes:
     Convoy.exit_error("The <bold>-s</bold> and <bold>-y</bold> flags cannot be used together.")
 Convoy.safe = args.safe
 Convoy.all_yes = args.yes
-Convoy.log_label = "GIT"
+Convoy.program_label = "GIT"
 
 cwd = args.path
 if cwd is not None:
@@ -99,7 +99,7 @@ if args.remove_branches is not None:
     def check_merged(branch: str, /) -> bool:
         if branch in merged:
             return True
-        Convoy.log(f"<fyellow>Skipping unmerged branch: <bold>{branch}</bold>.")
+        Convoy.warning(f"Skipping unmerged branch: <bold>{branch}</bold>.")
         return False
 
     for b in branches:

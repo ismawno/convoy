@@ -241,7 +241,7 @@ def download_vk_xml() -> Path:
     return location
 
 
-Convoy.log_label = "VK-LOADER"
+Convoy.program_label = "VK-LOADER"
 rpath = Path(__file__).parent.resolve()
 
 args = parse_arguments()

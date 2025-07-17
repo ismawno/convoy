@@ -117,9 +117,7 @@ class _MetaConvoy(type):
         self.all_yes = False
         self.safe = False
 
-        self.__log_label = ""
-        self.__verbose_label = self.__create_verbose_label()
-        self.__indent = 0
+        self.__indent = 1
         self.__no_colors = False
         if self.is_windows:
             kernel32 = ctypes.windll.kernel32
@@ -133,6 +131,35 @@ class _MetaConvoy(type):
             if not kernel32.SetConsoleMode(hstdout, new_mode):
                 self.__no_colors = True
                 self.log("Failed to set console mode. Text colors will be disabled.")
+
+        labels = [
+            ("CONVOY", "fblue"),
+            ("VERBOSE", "fmagenta"),
+            ("LOG", "fgreen"),
+            ("WARNING", "fyellow"),
+            ("ERROR", "fred"),
+            ("FAILURE", "fred"),
+            ("SUCCESS", "fgreen"),
+            ("PROMPT", "fcyan"),
+        ]
+        self.__labels: dict[str, str] = {}
+        label_indent = 0
+        for name, color in labels:
+            label = self.__create_label(name, color)
+            self.__labels[name.lower()] = label
+            lp = self.__create_label_prefix(label)
+            ln = len(_Style.format(lp, void=True))
+            if label != "CONVOY" and ln > label_indent:
+                label_indent = ln
+
+        self.__label_indent: dict[str, int] = {}
+        for name, color in labels:
+            if name == "CONVOY":
+                continue
+            label = self.__labels[name.lower()]
+            lp = self.__create_label_prefix(label)
+            ln = len(_Style.format(lp, void=True))
+            self.__label_indent[name.lower()] = label_indent - ln
 
     @property
     def is_windows(self) -> bool:
@@ -169,8 +196,12 @@ class _MetaConvoy(type):
             return platform.machine().lower()
 
     @property
-    def log_label(self) -> str:
-        return self.__log_label
+    def program_label(self) -> str:
+        return self.__labels["convoy"]
+
+    @program_label.setter
+    def program_label(self, msg: str, /) -> None:
+        self.__labels["convoy"] = self.__create_label(msg, "fblue") if msg else ""
 
     @property
     def is_admin(self) -> bool:
@@ -178,9 +209,64 @@ class _MetaConvoy(type):
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
         return os.geteuid() == 0
 
-    @log_label.setter
-    def log_label(self, msg: str, /) -> None:
-        self.__log_label = self.__create_log_label(msg) if msg != "" else ""
+    def linux_distro(self) -> str | None:
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("ID="):
+                        return line.split("=")[1].strip().strip('"')
+        except FileNotFoundError:
+            return None
+        return None
+
+    def linux_version(self) -> str | None:
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("VERSION_ID="):
+                        return line.split("=")[1].strip().strip('"')
+        except FileNotFoundError:
+            return None
+        return None
+
+    def push_indent(self) -> None:
+        self.__indent += 1
+
+    def pop_indent(self) -> None:
+        self.__indent -= 1
+
+    def verbose(self, msg: str, /, *args, **kwargs) -> None:
+        if self.is_verbose:
+            self.__print(msg, "verbose", *args, **kwargs)
+
+    def log(self, msg: str, /, *args, **kwargs) -> None:
+        self.__print(msg, "log", *args, **kwargs)
+
+    def warning(self, msg: str, /, *args, **kwargs) -> None:
+        self.__print(msg, "warning", *args, **kwargs)
+
+    def error(self, msg: str, /, *args, **kwargs) -> None:
+        self.__print(msg, "error", file=sys.stderr, *args, **kwargs)
+
+    def exit_ok(self, msg: str | None = None, /) -> NoReturn:
+        if msg is not None:
+            self.__print(msg, "success")
+
+        self.__exit(0, "success")
+
+    def exit_error(
+        self,
+        msg: str = "Something went wrong! Likely because something happened or the user declined a prompt.",
+        /,
+    ) -> NoReturn:
+        self.error(msg)
+        self.__exit(1, "failure")
+
+    def exit_declined(self) -> NoReturn:
+        self.exit_error("Operation declined by user.")
+
+    def exit_restart(self) -> NoReturn:
+        self.exit_ok("<bold>RE-RUN REQUIRED</bold>.")
 
     def to_snake_case(self, s: str, /) -> str:
         result = []
@@ -280,77 +366,17 @@ class _MetaConvoy(type):
 
         return result if not remove_duplicates else list(set(result))
 
-    def linux_distro(self) -> str | None:
-        try:
-            with open("/etc/os-release") as f:
-                for line in f:
-                    if line.startswith("ID="):
-                        return line.split("=")[1].strip().strip('"')
-        except FileNotFoundError:
-            return None
-        return None
-
-    def linux_version(self) -> str | None:
-        try:
-            with open("/etc/os-release") as f:
-                for line in f:
-                    if line.startswith("VERSION_ID="):
-                        return line.split("=")[1].strip().strip('"')
-        except FileNotFoundError:
-            return None
-        return None
-
-    def push_indent(self) -> None:
-        self.__indent += 1
-
-    def pop_indent(self) -> None:
-        self.__indent -= 1
-
-    def log(self, msg: str, /, *args, **kwargs) -> None:
-        print(
-            self.__format(f"{self.__log_label}{'  '*self.__indent}{msg}"),
-            *args,
-            **kwargs,
-        )
-
-    def verbose(self, msg: str, /, *args, **kwargs) -> None:
-        if self.is_verbose:
-            print(self.__format(f"{self.__log_label}{self.__verbose_label}{msg}"), *args, **kwargs)
-
     def ncheck(self, param: T | None, /, *, msg: str | None = None) -> T:
         if param is None:
             self.exit_error(msg or "Found a <bold>None</bold> value.")
         return param
 
-    def exit_ok(self, msg: str | None = None, /) -> NoReturn:
-        if msg is not None:
-            self.log(f"<fgreen>{msg}</fgreen>")
-
-        self.__exit(0)
-
-    def exit_error(
-        self,
-        msg: str = "Something went wrong! Likely because something happened or the user declined a prompt.",
-        /,
-    ) -> NoReturn:
-        self.log(f"<fred>Error: {msg}", file=sys.stderr)
-        self.__exit(1)
-
-    def exit_declined(self) -> NoReturn:
-        self.exit_error("Operation declined by user.")
-
-    def exit_restart(self) -> NoReturn:
-        self.exit_ok("<bold>RE-RUN REQUIRED</bold>.")
-
     def prompt(self, msg: str, /, *, default: bool = True) -> bool:
         if self.all_yes:
             return True
 
-        msg = self.__format(
-            f"{self.__log_label}{'  '*self.__indent}<fcyan>{msg} <bold>[Y]</bold>/N "
-            if default
-            else f"{self.__log_label}{'  '*self.__indent}<fcyan>{msg} Y/<bold>[N]</bold> "
-        )
+        msg = f"{msg} <bold>[Y]</bold>/N " if default else f"{msg} <bold>Y</bold>/[N] "
+        msg = self.__format_message(msg, "prompt")
 
         while True:
             answer = input(msg).strip().lower()
@@ -360,7 +386,8 @@ class _MetaConvoy(type):
                 return False
 
     def empty_prompt(self, msg: str, /) -> None:
-        input(self.__format(f"{self.__log_label}{'  '*self.__indent}<fcyan>{msg}"))
+        msg = self.__format_message(msg, "prompt")
+        input(msg)
 
     def run_process(
         self, command: str | list[str], /, *args, exit_on_decline: bool = True, **kwargs
@@ -393,19 +420,80 @@ class _MetaConvoy(type):
         elif self.is_macos:
             self.run_process(["open", path])
 
-    def __format(self, text: str, /) -> str:
+    def nested_split(
+        self,
+        string: str,
+        /,
+        *,
+        delim: str,
+        openers: str | list[str],
+        closers: str | list[str],
+        n: int | None = None,
+    ) -> list[str]:
+        if isinstance(openers, str):
+            openers = [openers]
+        if isinstance(closers, str):
+            closers = [closers]
+        if len(openers) != len(closers):
+            Convoy.exit_error(
+                f"Openers and closers length mismatch! Openers: <bold>{', '.join(openers)}</bold>, closers: <bold>{', '.join(closers)}</bold>."
+            )
+        if not openers or not closers:
+            Convoy.exit_error("Both openers and closers must not be empty.")
+
+        depth = 0
+        result = []
+        current = []
+        remaining = string
+        index = 0
+        while index < len(string):
+            substr = string[index:]
+            if n is not None and len(result) == n:
+                result.append(substr)
+                return result
+            if any(substr.startswith(op) for op in openers):
+                depth += 1
+            if any(substr.startswith(cl) for cl in closers):
+                depth -= 1
+            if depth == 0 and substr.startswith(delim):
+                index += len(delim)
+                result.append("".join(current))
+                remaining = string[index:]
+                current = []
+                continue
+
+            current.append(string[index])
+            index += 1
+        result.append(remaining)
+        return result
+
+    def __print(self, msg: str, label: str, /, *args, **kwargs) -> None:
+        print(
+            self.__format_message(msg, label),
+            *args,
+            **kwargs,
+        )
+
+    def __create_label_prefix(self, label: str, /) -> str:
+        plabel = self.__labels["convoy"]
+        return f"{plabel}{label}"
+
+    def __format_message(self, msg: str, label: str, /) -> str:
+        indent = self.__indent + self.__label_indent[label]
+        label = self.__labels[label]
+        prefix = self.__create_label_prefix(label)
+        return self.__format_ansi(f"{prefix}{' ' * indent}{msg}")
+
+    def __format_ansi(self, text: str, /) -> str:
         return _Style.format(text, void=self.__no_colors)
 
-    def __exit(self, code: int, /) -> NoReturn:
+    def __exit(self, code: int, label: str, /) -> NoReturn:
         elapsed = perf_counter() - self.__t1
-        self.log(f"Finished in <bold>{elapsed:.2f}</bold> seconds.")
+        self.__print(f"Finished in <bold>{elapsed:.2f}</bold> seconds.", label)
         sys.exit(code)
 
-    def __create_log_label(self, msg: str, /) -> str:
-        return f"<fblue>[{msg}]</fblue> "
-
-    def __create_verbose_label(self) -> str:
-        return "<fmagenta>[VERBOSE]</fmagenta> "
+    def __create_label(self, name: str, color: str, /) -> str:
+        return f"<{color}>[{name}]</{color}> "
 
 
 class Convoy(metaclass=_MetaConvoy):
