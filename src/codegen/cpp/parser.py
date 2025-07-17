@@ -299,7 +299,7 @@ class CPParser:
                     ]
                     has_declm = True
 
-                if subline.endswith("};"):
+                if subline == "};":
                     end = index + 1
                     break
 
