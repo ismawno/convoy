@@ -424,8 +424,8 @@ class _MetaConvoy(type):
         self,
         string: str,
         /,
-        *,
         delim: str,
+        *,
         openers: str | list[str],
         closers: str | list[str],
         n: int | None = None,
@@ -489,7 +489,7 @@ class _MetaConvoy(type):
 
     def __exit(self, code: int, label: str, /) -> NoReturn:
         elapsed = perf_counter() - self.__t1
-        self.__print(f"Finished in <bold>{elapsed:.2f}</bold> seconds.", label)
+        self.__print(f"Finished in <bold>{elapsed:.3f}</bold> seconds.", label)
         sys.exit(code)
 
     def __create_label(self, name: str, color: str, /) -> str:
