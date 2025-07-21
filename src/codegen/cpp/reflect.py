@@ -86,7 +86,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                 statfields = FieldCollection()
                 for f in clsinfo.fields.filter_modifier(exclude="static"):
                     memfields.add(f)
-                for f in clsinfo.fields.per_modifier["static"]:
+                for f in clsinfo.fields.filter_modifier(include="static"):
                     statfields.add(f)
 
                 hpp(f"static constexpr bool HasMemberFields = {'true' if memfields.fields else 'false'};")
