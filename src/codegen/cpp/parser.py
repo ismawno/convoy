@@ -51,9 +51,15 @@ class Field:
     modifers: list[str]
     groups: list[Group]
 
-    def as_str(self, parent: str, /, *, is_static: bool) -> str:
-        sct = "static" if is_static else "non-static"
-        return f"{sct} {self.visibility} {self.vtype} {parent}::{self.name}"
+    def as_str(
+        self,
+        parent: str,
+        /,
+    ) -> str:
+        mods = " ".join(self.modifers)
+        if mods:
+            mods += " "
+        return f"{self.visibility} {mods}{self.vtype} {parent}::{self.name}"
 
 
 @dataclass(frozen=True)
@@ -61,6 +67,7 @@ class FieldCollection:
     fields: list[Field] = field(default_factory=list)
     per_name: dict[str, Field] = field(default_factory=dict)
     per_type: dict[str, list[Field]] = field(default_factory=dict)
+    per_modifier: dict[str, list[Field]] = field(default_factory=dict)
     per_group: dict[Group, list[Field]] = field(default_factory=dict)
 
     def add(self, f: Field, /) -> None:
@@ -69,8 +76,39 @@ class FieldCollection:
         self.fields.append(f)
         self.per_name[f.name] = f
         self.per_type.setdefault(f.vtype, []).append(f)
+        for mod in f.modifers:
+            self.per_modifier.setdefault(mod, []).append(f)
         for g in f.groups:
             self.per_group.setdefault(g, []).append(f)
+
+    def filter_modifier(
+        self, *, include: str | list[str] | None = None, exclude: str | list[str] | None = None
+    ) -> list[Field]:
+        if isinstance(include, str):
+            include = [include]
+        if isinstance(exclude, str):
+            exclude = [exclude]
+
+        if include is None and exclude is None:
+            Convoy.exit_error("Must at least specify include or exclude modifiers.")
+        if include and exclude:
+            Convoy.exit_error("Must specify either include or exclude, not both.")
+
+        result = []
+        if include is not None:
+            for f in self.fields:
+                for mod in f.modifers:
+                    if mod in include:
+                        result.append(f)
+                        break
+        elif exclude is not None:
+            for f in self.fields:
+                for mod in f.modifers:
+                    if mod in exclude:
+                        break
+                else:
+                    result.append(f)
+        return result
 
 
 @dataclass(frozen=True)
@@ -101,7 +139,7 @@ class ClassIdentifier:
         templvars2 = templargs.replace(", ", ",").split(",")
         if len(templvars1) != len(templvars2):
             Convoy.exit_error(
-                f"The amount of template arguments between the class declaration to instantiate (<bold>{self.id.identifier}</bold>) and the ones to instantiate (<bold>{self.id.name}<{templargs}></bold>) does not match."
+                f"The amount of template arguments between the class declaration to instantiate (<bold>{self.identifier}</bold>) and the ones to instantiate (<bold>{self.name}<{templargs}></bold>) does not match."
             )
         return templvars1, templvars2
 
@@ -111,8 +149,7 @@ class Class:
     id: ClassIdentifier
     parents: list[Class]
     namespaces: list[str]
-    member: FieldCollection
-    static: FieldCollection
+    fields: FieldCollection
     file: Path | None
 
     def instantiate(self, templargs: str, /) -> Class:
@@ -123,8 +160,7 @@ class Class:
         templvars1, templvars2 = self.id.template_arguments_instantiation_pairs(templargs)
         templdecl = CPParser._split_template_list(self.id.templdecl)
 
-        member = FieldCollection()
-        static = FieldCollection()
+        fields = FieldCollection()
         tdecl: str | list[str] = []
         for t1, t2 in zip(templvars1, templvars2):
             if t1 == t2:
@@ -142,14 +178,10 @@ class Class:
                 f"Instantiating <bold>{t1}</bold> to <bold>{t2}</bold> in all fields of <bold>{self.id.identifier}</bold>."
             )
 
-            def apply(fcol: FieldCollection, outcol: FieldCollection, /) -> None:
-                for f in fcol.fields:
-                    vtype = re.sub(rf"\b{t1}\b", t2, f.vtype)
-                    fi = Field(f.name, f.visibility, vtype, f.modifers, f.groups)
-                    outcol.add(fi)
-
-            apply(self.member, member)
-            apply(self.static, static)
+            for f in self.fields.fields:
+                vtype = re.sub(rf"\b{t1}\b", t2, f.vtype)
+                fi = Field(f.name, f.visibility, vtype, f.modifers, f.groups)
+                fields.add(fi)
 
         tdecl = ", ".join(tdecl)
         idf = f"{self.id.name}<{templargs}>"
@@ -164,7 +196,7 @@ class Class:
             )
 
         id = ClassIdentifier(idf, self.id.name, self.id.ctype, tdecl if tdecl else None, self.id.inheritance)
-        return Class(id, self.parents, self.namespaces, member, static, self.file)
+        return Class(id, self.parents, self.namespaces, fields, self.file)
 
 
 @dataclass(frozen=True)
@@ -233,6 +265,14 @@ class CPParser:
             (?:(const)\s+)*
             (?:(constexpr)\s+)*
             (?:(mutable)\s+)*
+            (?:(thread_local)\s+)*
+            (?:(register)\s+)*
+            (?:(extern)\s+)*
+            (?:(alignas\(.*\))\s+)*
+            (?:(\[\[nodiscard\]\])\s+)*
+            (?:(\[\[maybe_unused\]\])\s+)*
+            (?:(\[\[deprecated\]\])\s+)*
+            (?:(\[\[no_unique_adress\]\])\s+)*
             ((?:\w+(?:<.*>)?::)*\w+(?:<.*>)?(?:\s*[&\*]\s*)?)\s*
             (\w+)(?:\s*[^\(\)]*)?(?!\s*\();
         """,
@@ -353,24 +393,19 @@ class CPParser:
 
         for c in classes.classes:
             for parent in c.parents:
-
-                def add_fields(pfields: FieldCollection, cfields: FieldCollection, /, *, static: bool) -> None:
-                    for f in pfields.fields:
-                        if f.name in cfields.per_name:
-                            Convoy.warning(
-                                f" - The field <bold>{f.as_str(parent.id.identifier, is_static=static)}</bold> is being shadowed by a field with the same name in the child {c.ctype} <bold>{c.id.identifier}</bold>."
-                            )
-                        else:
-                            Convoy.verbose(
-                                f" - The field <bold>{f.as_str(parent.id.identifier, is_static=static)}</bold> has been inherited by <bold>{c.id.identifier}</bold>."
-                            )
-                            cfields.add(f)
-
                 Convoy.log(
                     f"Inheriting fields from <bold>{c.id.identifier}</bold> parent: <bold>{parent.id.identifier}</bold>."
                 )
-                add_fields(parent.member, c.member, static=False)
-                add_fields(parent.static, c.static, static=True)
+                for f in parent.fields.fields:
+                    if f.name in c.fields.per_name:
+                        Convoy.warning(
+                            f" - The field <bold>{f.as_str(parent.id.identifier)}</bold> is being shadowed by a field with the same name in the child {c.ctype} <bold>{c.id.identifier}</bold>."
+                        )
+                    else:
+                        Convoy.verbose(
+                            f" - The field <bold>{f.as_str(parent.id.identifier)}</bold> has been inherited by <bold>{c.id.identifier}</bold>."
+                        )
+                        c.fields.add(f)
 
         return classes
 
@@ -556,8 +591,7 @@ class CPParser:
 
         groups = []
 
-        static = FieldCollection()
-        member = FieldCollection()
+        fields = FieldCollection()
 
         scope_counter = 0
         ignore = False
@@ -633,11 +667,11 @@ class CPParser:
             match = re.match(self.__field_pattern, line)
             if match is None:
                 continue
-            modifiers = [match.group(g) for g in range(1, 6) if match.group(g) is not None]
+            modifiers = [match.group(g) for g in range(1, 14) if match.group(g) is not None]
             is_static = "static" in modifiers
 
-            vtype = match.group(6)
-            vname = match.group(7)
+            vtype = match.group(14)
+            vname = match.group(15)
 
             if vtype is None or vname is None:
                 Convoy.exit_error(f"Failed to match the field type or name in line <bold>{line}</bold>.")
@@ -650,10 +684,7 @@ class CPParser:
                 list({g.name: g for g in groups}.values()),
             )
 
-            Convoy.verbose(
-                f" - Registered field <bold>{field.as_str(clinfo.id.identifier, is_static=is_static)}</bold>."
-            )
-            fields = static if is_static else member
+            Convoy.verbose(f" - Registered field <bold>{field.as_str(clinfo.id.identifier)}</bold>.")
             fields.add(field)
 
         if ignore:
@@ -666,8 +697,7 @@ class CPParser:
             clinfo.id,
             parents,
             clinfo.namespaces,
-            member,
-            static,
+            fields,
             clinfo.file,
         )
         self.__cache.add(cl)
