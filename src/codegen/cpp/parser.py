@@ -48,6 +48,7 @@ class Field:
     name: str
     visibility: str
     vtype: str
+    modifers: list[str]
     groups: list[Group]
 
     def as_str(self, parent: str, /, *, is_static: bool) -> str:
@@ -144,7 +145,7 @@ class Class:
             def apply(fcol: FieldCollection, outcol: FieldCollection, /) -> None:
                 for f in fcol.fields:
                     vtype = re.sub(rf"\b{t1}\b", t2, f.vtype)
-                    fi = Field(f.name, f.visibility, vtype, f.groups)
+                    fi = Field(f.name, f.visibility, vtype, f.modifers, f.groups)
                     outcol.add(fi)
 
             apply(self.member, member)
@@ -214,6 +215,29 @@ class CPParser:
         )
         self.__macros = macros
         self.__cache = ClassCollection()
+        self.__class_pattern = re.compile(
+            r"""
+            (?:template\s*<(.*)>\s*)*
+            (?:class|struct)\s+
+            (?:alignas\s*\(.*\)\s*)*
+            (?:[\w\s]*\b)?
+            ((?:\w+(?:<.*>)?::)*\w+(?:<.*>)?)\s*
+            (?::\s*(.+))?
+        """,
+            re.VERBOSE,
+        )
+        self.__field_pattern = re.compile(
+            r"""
+            (?:(static)\s+)*
+            (?:(inline)\s+)*
+            (?:(const)\s+)*
+            (?:(constexpr)\s+)*
+            (?:(mutable)\s+)*
+            ((?:\w+(?:<.*>)?::)*\w+(?:<.*>)?(?:\s*[&\*]\s*)?)\s*
+            (\w+)(?:\s*[^\(\)]*)?(?!\s*\();
+        """,
+            re.VERBOSE,
+        )
 
     def has_declare_macro(self) -> bool:
         return self.__macros.declare in self.__code
@@ -463,8 +487,7 @@ class CPParser:
     def __parse_class_identifier(self, clsdecl: str, clstype: str, /) -> ClassIdentifier:
         Convoy.verbose(f"Attempting to parse {clstype} identifier.")
 
-        pattern = r"(?:template<(.*)>[\n ]*)?(?:class|struct)(?: alignas\(.*?\))?(?: [a-zA-Z0-9_]+)? ([a-zA-Z0-9_<>,:]+) ?(?:: ?([a-zA-Z0-9_<>, :]+))?"
-        declaration = re.match(pattern, clsdecl.replace(", ", ","))
+        declaration = re.match(self.__class_pattern, clsdecl.replace(", ", ","))
         if declaration is None:
             Convoy.exit_error(
                 f"A match was not found when trying to extract the name of the {clstype}. The identified declaration was the following: <bold>{clsdecl}</bold>."
@@ -587,9 +610,6 @@ class CPParser:
             if not check_ignore_macros(line):
                 continue
 
-            if line == "};":
-                break
-
             if "{" in line:
                 scope_counter += 1
 
@@ -610,37 +630,23 @@ class CPParser:
             check_privacy("public")
             check_privacy("protected")
 
-            if not line.endswith(";") or "noexcept" in line or "override" in line or "using" in line:
+            match = re.match(self.__field_pattern, line)
+            if match is None:
                 continue
+            modifiers = [match.group(g) for g in range(1, 6) if match.group(g) is not None]
+            is_static = "static" in modifiers
 
-            line = line.replace(";", "").strip().removeprefix("inline ")
-            if "=" not in line and "{" not in line and ("(" in line or ")" in line):
-                continue
+            vtype = match.group(6)
+            vname = match.group(7)
 
-            is_static = line.startswith("static")
-            line = line.removeprefix("static ").removeprefix("inline ")
-
-            line = re.sub(r"=.*", "", line)
-            line = re.sub(r"{.*", "", line).strip()
-
-            splits = line.split(" ")
-            ln = len(splits) - ("const" in line)
-            if ln < 2:
-                continue
-
-            # Wont work for members written like int*x. Must be int* x or int *x
-            vtype, vname = splits[:2]
-            if "*" in vname:
-                vtype = f"{vtype}*"
-                vname = vname.replace("*", "")
-            if "&" in vname:
-                vtype = f"{vtype}&"
-                vname = vname.replace("&", "")
+            if vtype is None or vname is None:
+                Convoy.exit_error(f"Failed to match the field type or name in line <bold>{line}</bold>.")
 
             field = Field(
                 vname,
                 visibility,
                 vtype.replace(",", ", "),
+                modifiers,
                 list({g.name: g for g in groups}.values()),
             )
 
