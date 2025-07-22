@@ -175,23 +175,24 @@ class CPPOrchestrator:
         outputs = {}
         forbidden = r"<>:\"/\|?*"
 
-        def check(name: str, /) -> None:
+        def check(name: str, /) -> str:
             if any(f in name for f in forbidden):
                 Convoy.exit_error(
                     f"The name <bold>{name}</bold> contains forbidden characters that cannot be used as a file name. To avoid this error, do not set the <bold>--file-per-class</bold> option and choose another way to export the generated code."
                 )
+            return f"{Convoy.to_snake_case(name)}.hpp"
 
         for name, cs in classes.per_name.items():
-            check(name)
+            name = check(name)
             cc = ClassCollection()
             for c in cs:
                 cc.add(c)
             outputs[directory / name] = cc
         for enum in classes.enums:
-            check(enum.id.name)
+            name = check(enum.id.name)
             cc = ClassCollection()
             cc.add(enum)
-            outputs[directory / enum.id.name] = cc
+            outputs[directory / name] = cc
 
         return outputs
 
