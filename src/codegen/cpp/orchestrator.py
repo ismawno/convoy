@@ -41,12 +41,6 @@ class CPPOrchestrator:
 
         parser = CPPOrchestrator.__create_parser(inputs, macros=macros)
         parser.remove_comments()
-        if macros is not None and not parser.has_declare_macro():
-            Convoy.warning(
-                f"The declare macro <bold>{macros.declare}</bold> was not found. No code will be generated."
-            )
-            self.__outputs = {}
-            self.__generators = {}
 
         classes = parser.parse(*parse_args, **parse_kwargs)
 
