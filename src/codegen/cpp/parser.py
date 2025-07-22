@@ -459,6 +459,7 @@ class CPParser:
             is_class = "class" in line and not is_enum
             is_struct = "struct" in line and not is_class
             if is_enum and not include_enums:
+                index += 1
                 continue
 
             if is_enum + is_class + is_struct > 1:
