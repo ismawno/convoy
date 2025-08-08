@@ -202,6 +202,23 @@ def increase_tag(tag: str, /) -> str:
     return f"v{numbers[0]}.{numbers[1]}.{numbers[2] + 1}"
 
 
+def biggest_tag(tags: str | list[str], /) -> str:
+    if isinstance(tags, str):
+        tags = tags.split("\n")
+
+    map = {}
+    for t in tags:
+        if not t:
+            continue
+
+        numbers = [int(n) for n in t.strip("v").split(".")]
+        score = numbers[0] * 1000000 + numbers[1] * 1000 + numbers[2]
+        map[score] = t
+
+    scores = sorted(map.keys())
+    return map[scores[-1]]
+
+
 def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
     Convoy.log(f"Adding tag to project at <underline>{project}</underline>.")
     if not project.is_dir():
@@ -216,7 +233,7 @@ def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
     )
 
     if result is not None and result.returncode == 0:
-        tag = sorted([t for t in result.stdout.split("\n") if t])[-1]
+        tag = biggest_tag(result.stdout)
         Convoy.log(f"Found an already existing tag in the current commit: <bold>{tag}</bold>.")
         return tag
 
@@ -224,11 +241,14 @@ def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
     if result is None:
         Convoy.exit_error("Failed to acquire tags.")
 
-    tags: list[str] = sorted([t for t in result.stdout.split("\n") if t])
+    tags: list[str] = [t for t in result.stdout.split("\n") if t]
     Convoy.log(f"Found tags: <bold>{', '.join(tags)}</bold>." if tags else "Found no tags.")
 
-    old_tag = tags[-1] if tags else "v0.1.0"
+    old_tag = biggest_tag(tags) if tags else "v0.1.0"
+
+    Convoy.log(f"Latest tag: <bold>{old_tag}</bold>.")
     new_tag = increase_tag(old_tag)
+    Convoy.log(f"Next tag: <bold>{new_tag}</bold>.")
 
     cmake = project / project.name / "CMakeLists.txt"
     froze = modify_cmake(cmake.resolve(), old_tag, new_tag, parent_tag)
