@@ -18,6 +18,20 @@ def parse_arguments() -> Namespace:
         help="The working directory from which to execute the commands. Defaults to current working directory.",
     )
     parser.add_argument(
+        "--create-tag",
+        type=Path,
+        nargs="+",
+        default=[],
+        help="Create a new tag for all listed projects. The tag will be an increment following the --level parameter. The projects after the first are considered to require the previous one as a dependency, freezing cmake fetchcontent tag.",
+    )
+    parser.add_argument(
+        "-l",
+        "--level",
+        type=str,
+        default="fix",
+        help="The level of the tag to increment. Can be 'fix', 'minor' or 'major'. Default is 'fix'.",
+    )
+    parser.add_argument(
         "--remove-branches",
         type=str,
         nargs="*",
@@ -110,5 +124,135 @@ if args.remove_branches is not None:
             and args.remote
         ):
             Convoy.run_process(["git", "push", "origin", "--delete", b], cwd=cwd, exit_on_decline=False)
+
+
+projects: list[Path] = args.create_tag
+if not projects:
+    Convoy.exit_ok()
+
+
+def modify_cmake(cmake: Path, old_tag: str, new_tag: str, parent_tag: str | None, /) -> bool:
+
+    froze = parent_tag is not None
+    if not cmake.is_file():
+        Convoy.warning(f"The cmake path <underline>{cmake}</underline> is not a file or does not exist.")
+        return False
+
+    with open(cmake, "r") as f:
+        content = f.read()
+        froze = "GIT_TAG main" in content
+
+    if froze:
+        content = content.replace("GIT_TAG main", f"GIT_TAG {parent_tag}")
+        Convoy.log(f"Modified <underline>{cmake}</underline> to freeze dependency to <bold>{parent_tag}</bold>.")
+    else:
+        Convoy.warning(f"A main branch reference was not found in <underline>{cmake}</underline>.")
+
+    macro = rf"VERSION=\"{old_tag}" in content
+
+    if macro:
+        content = content.replace(rf"VERSION=\"{old_tag}", rf"VERSION=\"{new_tag}")
+        Convoy.log(f"Modified <underline>{cmake}</underline> to update version macro.")
+    else:
+        Convoy.warning(f"Version macro with current tag <bold>{old_tag}</bold> not found.")
+
+    if not froze and not macro:
+        return False
+
+    with open(cmake, "w") as f:
+        f.write(content)
+
+    if not Convoy.run_process_success(["git", "add", cmake.name], cwd=cmake.parent) or not Convoy.run_process_success(
+        [
+            "git",
+            "commit",
+            "-m",
+            f"Freeze dependency to {parent_tag}" if parent_tag is not None else f"Update version macro to {new_tag}",
+        ],
+        cwd=cmake.parent,
+    ):
+        Convoy.exit_error(f"Failed to run git commands")
+
+    return froze
+
+
+def revert_cmake(cmake: Path, parent_tag: str, /) -> None:
+    Convoy.log(f"Unfreezing at <bold>{cmake}</bold>.")
+    with open(cmake.resolve(), "r") as f:
+        content = f.read()
+
+    content = content.replace(f"GIT_TAG {parent_tag}", "GIT_TAG main")
+    Convoy.log(f"Modified <underline>{cmake}</underline> to unfreeze dependency from <bold>{parent_tag}</bold>.")
+    with open(cmake, "w") as f:
+        f.write(content)
+
+    if not Convoy.run_process_success(["git", "add", cmake.name], cwd=cmake.parent) or not Convoy.run_process_success(
+        ["git", "commit", "-m", f"Unfreeze dependency from {parent_tag}"], cwd=cmake.parent
+    ):
+        Convoy.exit_error(f"Failed to run git commands")
+
+
+def increase_tag(tag: str, /) -> str:
+    numbers = [int(n) for n in tag.strip("v").split(".")]
+    level = args.level
+    if level == "major":
+        return f"v{numbers[0] + 1}.0.0"
+    if level == "minor":
+        return f"v{numbers[0]}.{numbers[1] + 1}.0"
+    return f"v{numbers[0]}.{numbers[1]}.{numbers[2] + 1}"
+
+
+def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
+    Convoy.log(f"Adding tag to project at <underline>{project}</underline>.")
+    if not project.is_dir():
+        Convoy.exit_error(f"The project <underline>{project}</underline> must exist and be a directory.")
+
+    result = Convoy.run_process(
+        ["git", "describe", "--tags", "--exact-match"],
+        exit_on_decline=True,
+        text=True,
+        capture_output=True,
+        cwd=project,
+    )
+
+    if result is not None and result.returncode == 0:
+        tag = sorted([t for t in result.stdout.split("\n") if t])[-1]
+        Convoy.log(f"Found an already existing tag in the current commit: <bold>{tag}</bold>.")
+        return tag
+
+    result = Convoy.run_process(["git", "tag"], exit_on_decline=True, text=True, capture_output=True, cwd=project)
+    if result is None:
+        Convoy.exit_error("Failed to acquire tags.")
+
+    tags: list[str] = sorted([t for t in result.stdout.split("\n") if t])
+    Convoy.log(f"Found tags: <bold>{', '.join(tags)}</bold>." if tags else "Found no tags.")
+
+    old_tag = tags[-1] if tags else "v0.1.0"
+    new_tag = increase_tag(old_tag)
+
+    cmake = project / project.name / "CMakeLists.txt"
+    froze = modify_cmake(cmake.resolve(), old_tag, new_tag, parent_tag)
+
+    if not Convoy.run_process_success(["git", "tag", new_tag], cwd=project):
+        Convoy.exit_error(f"Failed to create tag <bold>{new_tag}</bold>.")
+
+    if froze and parent_tag is not None:
+        revert_cmake(cmake, parent_tag)
+
+    if not args.remote:
+        return new_tag
+
+    if not Convoy.run_process_success(
+        ["git", "push", "origin", new_tag], cwd=project
+    ) or not Convoy.run_process_success(["git", "push"], cwd=project):
+        Convoy.exit_error("Failed to push.")
+
+    return new_tag
+
+
+tag = add_tag(projects[0].resolve())
+for i in range(1, len(projects)):
+    tag = add_tag(projects[i].resolve(), tag)
+
 
 Convoy.exit_ok()

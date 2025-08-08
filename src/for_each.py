@@ -113,7 +113,7 @@ def process_directory(path: Path, cmd: str, /) -> None:
         return
 
     Convoy.verbose(f"Executing command <bold>{cmd}</bold> at <underline>{path}</underline>.")
-    if not Convoy.run_process_success(cmd, cwd=path, shell=True):
+    if not Convoy.run_process_success(cmd, cwd=path, shell=True, log=False):
         if not args.ignore_cmd_errors:
             Convoy.exit_error(f"Failed to execute command <bold>{cmd}</bold> at <underline>{path}</underline>.")
         Convoy.warning(f"Command <bold>{cmd}</bold> failed at <underline>{path}</underline>.")
