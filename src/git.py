@@ -247,6 +247,18 @@ def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
     old_tag = biggest_tag(tags) if tags else "v0.1.0"
 
     Convoy.log(f"Latest tag: <bold>{old_tag}</bold>.")
+
+    result = Convoy.run_process(
+        ["git", "log", "-1", "--pretty=%B"],
+        exit_on_decline=True,
+        text=True,
+        capture_output=True,
+        cwd=project,
+    )
+    if result is not None and "Unfreeze" in result.stdout:
+        Convoy.log(f"Found an already existing compatible tag: <bold>{old_tag}</bold>.")
+        return old_tag
+
     new_tag = increase_tag(old_tag)
     Convoy.log(f"Next tag: <bold>{new_tag}</bold>.")
 
