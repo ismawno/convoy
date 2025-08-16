@@ -28,6 +28,7 @@ def parse_arguments() -> Namespace:
         "-l",
         "--level",
         type=str,
+        nargs="+",
         default="fix",
         help="The level of the tag to increment. Can be 'fix', 'minor' or 'major'. Default is 'fix'.",
     )
@@ -192,9 +193,8 @@ def revert_cmake(cmake: Path, parent_tag: str, /) -> None:
         Convoy.exit_error(f"Failed to run git commands")
 
 
-def increase_tag(tag: str, /) -> str:
+def increase_tag(tag: str, level: str, /) -> str:
     numbers = [int(n) for n in tag.strip("v").split(".")]
-    level = args.level
     if level == "major":
         return f"v{numbers[0] + 1}.0.0"
     if level == "minor":
@@ -219,7 +219,7 @@ def biggest_tag(tags: str | list[str], /) -> str:
     return map[scores[-1]]
 
 
-def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
+def add_tag(project: Path, level: str, parent_tag: str | None = None, /) -> str:
     Convoy.log(f"Adding tag to project at <underline>{project}</underline>.")
     if not project.is_dir():
         Convoy.exit_error(f"The project <underline>{project}</underline> must exist and be a directory.")
@@ -259,7 +259,7 @@ def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
         Convoy.log(f"Found an already existing compatible tag: <bold>{old_tag}</bold>.")
         return old_tag
 
-    new_tag = increase_tag(old_tag)
+    new_tag = increase_tag(old_tag, level)
     Convoy.log(f"Next tag: <bold>{new_tag}</bold>.")
 
     cmake = project / project.name / "CMakeLists.txt"
@@ -282,9 +282,16 @@ def add_tag(project: Path, parent_tag: str | None = None, /) -> str:
     return new_tag
 
 
-tag = add_tag(projects[0].resolve())
+levels = args.level
+if len(levels) == 1:
+    levels = levels * len(projects)
+
+if len(levels) != len(projects):
+    Convoy.exit_error("If not one, the number of levels must match the number of projects.")
+
+tag = add_tag(projects[0].resolve(), levels[0])
 for i in range(1, len(projects)):
-    tag = add_tag(projects[i].resolve(), tag)
+    tag = add_tag(projects[i].resolve(), levels[0], tag)
 
 
 Convoy.exit_ok()
