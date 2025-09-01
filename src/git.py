@@ -219,23 +219,26 @@ def biggest_tag(tags: str | list[str], /) -> str:
     return map[scores[-1]]
 
 
-def add_tag(project: Path, level: str, parent_tag: str | None = None, /) -> str:
+def add_tag(
+    project: Path, level: str, parent_tag: str | None = None, parent_modified: bool = False, /
+) -> tuple[str, bool]:
     Convoy.log(f"Adding tag to project at <underline>{project}</underline>.")
     if not project.is_dir():
         Convoy.exit_error(f"The project <underline>{project}</underline> must exist and be a directory.")
 
-    result = Convoy.run_process(
-        ["git", "describe", "--tags", "--exact-match"],
-        exit_on_decline=True,
-        text=True,
-        capture_output=True,
-        cwd=project,
-    )
+    if not parent_modified:
+        result = Convoy.run_process(
+            ["git", "describe", "--tags", "--exact-match"],
+            exit_on_decline=True,
+            text=True,
+            capture_output=True,
+            cwd=project,
+        )
 
-    if result is not None and result.returncode == 0:
-        tag = biggest_tag(result.stdout)
-        Convoy.log(f"Found an already existing tag in the current commit: <bold>{tag}</bold>.")
-        return tag
+        if result is not None and result.returncode == 0:
+            tag = biggest_tag(result.stdout)
+            Convoy.log(f"Found an already existing tag in the current commit: <bold>{tag}</bold>.")
+            return tag, False
 
     result = Convoy.run_process(["git", "tag"], exit_on_decline=True, text=True, capture_output=True, cwd=project)
     if result is None:
@@ -248,16 +251,17 @@ def add_tag(project: Path, level: str, parent_tag: str | None = None, /) -> str:
 
     Convoy.log(f"Latest tag: <bold>{old_tag}</bold>.")
 
-    result = Convoy.run_process(
-        ["git", "log", "-1", "--pretty=%B"],
-        exit_on_decline=True,
-        text=True,
-        capture_output=True,
-        cwd=project,
-    )
-    if result is not None and "Unfreeze" in result.stdout:
-        Convoy.log(f"Found an already existing compatible tag: <bold>{old_tag}</bold>.")
-        return old_tag
+    if not parent_modified:
+        result = Convoy.run_process(
+            ["git", "log", "-1", "--pretty=%B"],
+            exit_on_decline=True,
+            text=True,
+            capture_output=True,
+            cwd=project,
+        )
+        if result is not None and "Unfreeze" in result.stdout:
+            Convoy.log(f"Found an already existing compatible tag: <bold>{old_tag}</bold>.")
+            return old_tag, False
 
     new_tag = increase_tag(old_tag, level)
     Convoy.log(f"Next tag: <bold>{new_tag}</bold>.")
@@ -272,14 +276,14 @@ def add_tag(project: Path, level: str, parent_tag: str | None = None, /) -> str:
         revert_cmake(cmake, parent_tag)
 
     if not args.remote:
-        return new_tag
+        return new_tag, True
 
     if not Convoy.run_process_success(
         ["git", "push", "origin", new_tag], cwd=project
     ) or not Convoy.run_process_success(["git", "push"], cwd=project):
         Convoy.exit_error("Failed to push.")
 
-    return new_tag
+    return new_tag, True
 
 
 levels = args.level
@@ -289,9 +293,9 @@ if len(levels) == 1:
 if len(levels) != len(projects):
     Convoy.exit_error("If not one, the number of levels must match the number of projects.")
 
-tag = add_tag(projects[0].resolve(), levels[0])
+tag, was_mod = add_tag(projects[0].resolve(), levels[0])
 for i in range(1, len(projects)):
-    tag = add_tag(projects[i].resolve(), levels[0], tag)
+    tag, was_mod = add_tag(projects[i].resolve(), levels[i], tag, was_mod)
 
 
 Convoy.exit_ok()
