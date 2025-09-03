@@ -245,6 +245,19 @@ args = parse_arguments()
 Convoy.is_verbose = args.verbose
 vulkan_api: str = args.api
 
+
+def check_api(element: ET.Element, /, *, strict: bool = False) -> bool:
+    for k in ["api", "supported", "export"]:
+        api = element.get(k)
+        if api is None:
+            continue
+
+        if vulkan_api not in api.split(","):
+            return False
+
+    return not strict
+
+
 vkxml_path: Path | None = args.input
 output: Path = args.output.resolve()
 
@@ -270,6 +283,8 @@ def ncheck_text(param: ET.Element | None, /) -> str:
 
 dispatchables: set[str] = set()
 for h in root.findall("types/type[@category='handle']"):
+    if not check_api(h):
+        continue
     text = "".join(h.itertext())
     if "VK_DEFINE_HANDLE" in text:
         hname = h.get("name") or ncheck_text(h.find("name"))
@@ -280,6 +295,9 @@ functions: dict[str, Function] = {}
 
 def parse_commands(root: ET.Element, /, *, alias_sweep: bool) -> None:
     for command in root.findall("commands/command"):
+        if not check_api(command):
+            continue
+
         alias = command.get("alias")
         if alias_sweep:
 
@@ -311,14 +329,9 @@ def parse_commands(root: ET.Element, /, *, alias_sweep: bool) -> None:
         fname = ncheck_text(proto.find("name"))
         return_type = ncheck_text(proto.find("type"))
 
-        api = command.get("api")
-        if api is not None and vulkan_api not in api.split(","):
-            continue
-
         params: list[Parameter] = []
         for param in command.findall("param"):
-            api = param.get("api")
-            if api is not None and vulkan_api not in api.split(","):
+            if not check_api(param):
                 continue
 
             param_name = ncheck_text(param.find("name"))
@@ -353,6 +366,9 @@ type_aliases: dict[str, list[str]] = {}
 
 def parse_types(root: ET.Element, lookup: str, /, *, alias_sweep: bool) -> None:
     for tp in root.findall(lookup):
+        if not check_api(tp):
+            continue
+
         alias = tp.get("alias")
 
         if alias_sweep:
@@ -393,13 +409,16 @@ Convoy.log(f"Found <bold>{len(functions)}</bold> {vulkan_api} functions in the v
 
 
 for feature in root.findall("feature"):
-    api = feature.get("api")
-    if api is not None and vulkan_api not in api.split(","):
+    if not check_api(feature):
         continue
     version = Convoy.ncheck(feature.get("name"))
 
     for require in feature.findall("require"):
+        if not check_api(require):
+            continue
         for command in require.findall("command"):
+            if not check_api(command):
+                continue
             fname = Convoy.ncheck(command.get("name"))
             fn = functions[fname]
             if fn.available_since is not None:
@@ -418,6 +437,8 @@ for feature in root.findall("feature"):
             )
 
         for tp in require.findall("type"):
+            if not check_api(tp):
+                continue
             tpname = Convoy.ncheck(tp.get("name"))
             t = types[tpname]
             if t.available_since is not None:
