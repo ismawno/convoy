@@ -393,6 +393,9 @@ Convoy.log(f"Found <bold>{len(functions)}</bold> {vulkan_api} functions in the v
 
 
 for feature in root.findall("feature"):
+    api = feature.get("api")
+    if api is not None and vulkan_api not in api.split(","):
+        continue
     version = Convoy.ncheck(feature.get("name"))
 
     for require in feature.findall("require"):
@@ -698,8 +701,8 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
             namespace="DeviceTable",
         )
 
-hpp.write(output)
-cpp.write(output)
+hpp.write(output / "loader.hpp")
+cpp.write(output / "loader.cpp")
 
 tmpath: Path | None = args.export_timeline
 if tmpath is None:
