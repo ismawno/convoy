@@ -161,7 +161,6 @@ class Function:
         no_discard: bool = False,
         api_macro: bool = False,
         semicolon: bool = True,
-        noexcept: bool = False,
         const: bool = False,
     ) -> str:
         params = ", ".join(p.as_string() for p in self.params)
@@ -175,8 +174,6 @@ class Function:
         if api_macro:
             rtype = f"VKIT_API {rtype}"
         modifiers = " const" if const else ""
-        if noexcept:
-            modifiers += " noexcept"
 
         return f"{rtype} {fname}({params}){modifiers};" if semicolon else f"{rtype} {fname}({params}){modifiers}"
 
@@ -510,7 +507,7 @@ with hpp.scope("namespace VKit::Vulkan", indent=0):
 
     def codefn1(gen: CPPGenerator, fn: Function, /) -> None:
         gen(fn.as_fn_pointer_declaration(modifier="extern"))
-        gen(fn.as_string(vk_prefix=False, no_discard=True, api_macro=True, noexcept=True))
+        gen(fn.as_string(vk_prefix=False, no_discard=True, api_macro=True))
 
     for fn in functions.values():
         if fn.is_instance_function() or fn.is_device_function():
@@ -524,7 +521,7 @@ with hpp.scope("namespace VKit::Vulkan", indent=0):
 
     def codefn2(gen: CPPGenerator, fn: Function, /) -> None:
         gen(fn.as_fn_pointer_declaration(null=True))
-        gen(fn.as_string(vk_prefix=False, no_discard=True, noexcept=True, const=True))
+        gen(fn.as_string(vk_prefix=False, no_discard=True, const=True))
 
     with hpp.scope("struct VKIT_API InstanceTable", closer="};"):
         hpp("static InstanceTable Create(VkInstance p_Instance);")
@@ -570,7 +567,7 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
 
     def codefn3(gen: CPPGenerator, fn: Function, /) -> None:
         gen(fn.as_fn_pointer_declaration(null=True))
-        with gen.scope(fn.as_string(vk_prefix=False, semicolon=False, noexcept=True)):
+        with gen.scope(fn.as_string(vk_prefix=False, semicolon=False)):
 
             pnames = [p.name for p in fn.params]
 
@@ -655,7 +652,6 @@ with cpp.scope("namespace VKit::Vulkan", indent=0):
             fn.as_string(
                 vk_prefix=False,
                 semicolon=False,
-                noexcept=True,
                 const=True,
                 namespace=namespace,
             )
