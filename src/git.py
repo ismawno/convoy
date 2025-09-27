@@ -168,7 +168,11 @@ def modify_cmake(cmake: Path, old_tag: str, new_tag: str, parent_tag: str | None
             "git",
             "commit",
             "-m",
-            f"Freeze dependency to {parent_tag}" if parent_tag is not None else f"Update version macro to {new_tag}",
+            (
+                f"chore: Freeze dependency to {parent_tag}"
+                if parent_tag is not None
+                else f"chore: Update version macro to {new_tag}"
+            ),
         ],
         cwd=cmake.parent,
     ):
@@ -188,7 +192,7 @@ def revert_cmake(cmake: Path, parent_tag: str, /) -> None:
         f.write(content)
 
     if not Convoy.run_process_success(["git", "add", cmake.name], cwd=cmake.parent) or not Convoy.run_process_success(
-        ["git", "commit", "-m", f"Unfreeze dependency from {parent_tag}"], cwd=cmake.parent
+        ["git", "commit", "-m", f"chore: Unfreeze dependency from {parent_tag}"], cwd=cmake.parent
     ):
         Convoy.exit_error(f"Failed to run git commands")
 
