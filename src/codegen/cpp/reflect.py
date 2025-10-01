@@ -55,7 +55,6 @@ orchestrator = CPPOrchestrator.from_cli_arguments(args, macros=macros, reserved_
 def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> None:
     hpp.include("tkit/container/array.hpp", quotes=True)
     hpp.include("tkit/reflection/reflect.hpp", quotes=True)
-    hpp.include("tkit/utils/concepts.hpp", quotes=True)
     hpp.include("tkit/utils/logging.hpp", quotes=True)
     hpp.include("tuple")
     hpp.include("string_view")
@@ -82,9 +81,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                     hpp.brief("Get an enum value from a string.")
                     hpp("If no valid enum value is found, the first enum value will be returned. Take care.")
 
-                with hpp.scope(
-                    f"static constexpr {enum.id.identifier} FromString(const std::string_view p_Value)"
-                ):
+                with hpp.scope(f"static constexpr {enum.id.identifier} FromString(const std::string_view p_Value)"):
                     vals = list(enum.values.keys())
                     for val in vals:
                         with hpp.scope(f'if (p_Value == "{val}")', delimiters=False):
@@ -192,9 +189,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                                 hpp("return p_Instance.*Pointer;")
 
                             create_get_doc()
-                            with hpp.scope(
-                                f"const Ref_Type &Get(const {clsinfo.id.identifier} &p_Instance) const"
-                            ):
+                            with hpp.scope(f"const Ref_Type &Get(const {clsinfo.id.identifier} &p_Instance) const"):
                                 hpp("return p_Instance.*Pointer;")
 
                             with hpp.doc():
