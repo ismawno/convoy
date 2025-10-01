@@ -350,7 +350,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                     with hpp.scope(
                         f"template <typename Ref_Type, typename Ref_Fun> static constexpr void ForEach{modifier}Field(const Ref_Type &p_Fields, Ref_Fun &&p_Fun)"
                     ):
-                        with hpp.scope("if constexpr (Iterable<Ref_Type>)", delimiters=False):
+                        with hpp.scope("if constexpr (Container::Iterable<Ref_Type>)", delimiters=False):
                             with hpp.scope(
                                 "for (const auto &field : p_Fields)",
                                 delimiters=False,
