@@ -87,7 +87,7 @@ def generate_reflection_code(hpp: CPPGenerator, classes: ClassCollection, /) -> 
                         with hpp.scope(f'if (p_Value == "{val}")', delimiters=False):
                             hpp(f"return {enum.id.identifier}::{val};")
 
-                    hpp('TKIT_ERROR("Found no valid enum value for the string {}.", p_Value);')
+                    hpp('TKIT_FATAL("Found no valid enum value for the string {}.", p_Value);')
                     hpp(f"return {enum.id.identifier}::{vals[0]};")
 
                 with hpp.doc():
