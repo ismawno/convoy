@@ -110,7 +110,7 @@ def get_fields_with_options(clsinfo: Class, /) -> list[tuple[Field, list[str]]]:
 def generate_serialization_code(hpp: CPPGenerator, classes: ClassCollection) -> None:
     hpp.include(f"tkit/serialization/{backend}/codec.hpp", quotes=True)
     if classes.enums:
-        hpp.include(f"tkit/utils/logging.hpp", quotes=True)
+        hpp.include(f"tkit/utils/debug.hpp", quotes=True)
         hpp.include("string")
 
     with hpp.scope(f"namespace TKit::{backend.capitalize()}", indent=0):
