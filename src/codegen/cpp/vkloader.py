@@ -129,6 +129,7 @@ class Type:
         return (
             " || ".join([f"({g})" if "&&" in g else g for g in guards if g])
             .replace("VK_VERSION", "VKIT_API_VERSION")
+            .replace("VK_BASE_VERSION", "VKIT_API_VERSION")
             .strip()
         )
 
@@ -417,7 +418,7 @@ for feature in root.findall("feature"):
 
             fn.available_since = version
             guards = GuardGroup()
-            if version != "VK_VERSION_1_0" and args.guard_version:
+            if version not in ["VK_VERSION_1_0", "VK_BASE_VERSION_1_0"] and args.guard_version:
                 guards.and_guards(version)
 
             fn.guards.append(guards)
@@ -435,7 +436,7 @@ for feature in root.findall("feature"):
 
             t.available_since = version
             guards = GuardGroup()
-            if version != "VK_VERSION_1_0" and args.guard_version:
+            if version not in ["VK_VERSION_1_0", "VK_BASE_VERSION_1_0"] and args.guard_version:
                 guards.and_guards(version)
 
             t.guards.append(guards)
