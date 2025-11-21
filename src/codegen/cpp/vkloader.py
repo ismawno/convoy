@@ -61,7 +61,7 @@ def parse_arguments() -> Namespace:
         default=None,
         help="The path where a small .txt will be exported alongside the generated code with information about when/by which extension a function/type was added. If not provided, the timeline will not be exported.",
     )
-    parser.add_argument("--sdk-version", type=str, default="v1.4.313", help="The version of the vulkan sdk to use.")
+    parser.add_argument("--sdk-version", type=str, default="v1.4.328", help="The version of the vulkan sdk to use.")
     parser.add_argument(
         "-v",
         "--verbose",
@@ -126,12 +126,7 @@ class Type:
 
     def parse_guards(self) -> str:
         guards = [g.parse_guards() for g in self.guards]
-        return (
-            " || ".join([f"({g})" if "&&" in g else g for g in guards if g])
-            .replace("VK_VERSION", "VKIT_API_VERSION")
-            .replace("VK_BASE_VERSION", "VKIT_API_VERSION")
-            .strip()
-        )
+        return fix_version_macro(" || ".join([f"({g})" if "&&" in g else g for g in guards if g]).strip())
 
 
 @dataclass
@@ -145,9 +140,7 @@ class Function:
 
     def parse_guards(self) -> str:
         guards = [g.parse_guards() for g in self.guards]
-        guards = " || ".join([f"({g})" if "&&" in g else g for g in guards if g]).replace(
-            "VK_VERSION", "VKIT_API_VERSION"
-        )
+        guards = fix_version_macro(" || ".join([f"({g})" if "&&" in g else g for g in guards if g]))
 
         if self.name not in broken_functions:
             return guards.strip()
@@ -260,6 +253,13 @@ def check_api(element: ET.Element, /, *, strict: bool = False) -> bool:
     return not strict
 
 
+def fix_version_macro(version: str, /) -> str:
+    shits = ["VK_VERSION", "VK_BASE_VERSION", "VK_COMPUTE_VERSION", "VK_GRAPHICS_VERSION"]
+    for shit in shits:
+        version = version.replace(shit, "VKIT_API_VERSION")
+    return version
+
+
 vkxml_path: Path | None = args.input
 output: Path = args.output.resolve()
 
@@ -285,6 +285,9 @@ def ncheck_text(param: ET.Element | None, /) -> str:
 
 dispatchables: set[str] = set()
 for h in root.findall("types/type[@category='handle']"):
+    if not check_api(h):
+        continue
+
     text = "".join(h.itertext())
     if "VK_DEFINE_HANDLE" in text:
         hname = h.get("name") or ncheck_text(h.find("name"))
@@ -295,6 +298,8 @@ functions: dict[str, Function] = {}
 
 def parse_commands(root: ET.Element, /, *, alias_sweep: bool) -> None:
     for command in root.findall("commands/command"):
+        if not check_api(command):
+            continue
 
         alias = command.get("alias")
         if alias_sweep:
@@ -364,6 +369,8 @@ type_aliases: dict[str, list[str]] = {}
 
 def parse_types(root: ET.Element, lookup: str, /, *, alias_sweep: bool) -> None:
     for tp in root.findall(lookup):
+        if not check_api(tp):
+            continue
 
         alias = tp.get("alias")
 
@@ -405,10 +412,16 @@ Convoy.log(f"Found <bold>{len(functions)}</bold> {vulkan_api} functions in the v
 
 
 for feature in root.findall("feature"):
+    if not check_api(feature):
+        continue
     version = Convoy.ncheck(feature.get("name"))
 
     for require in feature.findall("require"):
+        if not check_api(require):
+            continue
         for command in require.findall("command"):
+            if not check_api(command):
+                continue
             fname = Convoy.ncheck(command.get("name"))
             fn = functions[fname]
             if fn.available_since is not None:
@@ -416,10 +429,10 @@ for feature in root.findall("feature"):
                     f"Function <bold>{fname}</bold> is already flagged as required since <bold>{fn.available_since}</bold>. Cannot register it again for the <bold>{version}</bold> feature."
                 )
 
+            version = fix_version_macro(version)
             fn.available_since = version
             guards = GuardGroup()
-            if version not in ["VK_VERSION_1_0", "VK_BASE_VERSION_1_0"] and args.guard_version:
-                guards.and_guards(version)
+            guards.and_guards(version)
 
             fn.guards.append(guards)
             Convoy.verbose(
@@ -427,6 +440,9 @@ for feature in root.findall("feature"):
             )
 
         for tp in require.findall("type"):
+            if not check_api(tp):
+                continue
+
             tpname = Convoy.ncheck(tp.get("name"))
             t = types[tpname]
             if t.available_since is not None:
@@ -434,10 +450,10 @@ for feature in root.findall("feature"):
                     f"Type <bold>{tpname}</bold> is already flagged as required since <bold>{t.available_since}</bold>. Cannot register it again for the <bold>{version}</bold> feature."
                 )
 
+            version = fix_version_macro(version)
             t.available_since = version
             guards = GuardGroup()
-            if version not in ["VK_VERSION_1_0", "VK_BASE_VERSION_1_0"] and args.guard_version:
-                guards.and_guards(version)
+            guards.and_guards(version)
 
             t.guards.append(guards)
             Convoy.verbose(
