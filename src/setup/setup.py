@@ -805,9 +805,15 @@ def try_install_vulkan(version: VulkanVersion, /) -> bool:
     url = f"https://sdk.lunarg.com/sdk/download/{version}/{osfolder}/{filename}"
     download_file(url, download_path)
 
-    def macos_install(installer_path: Path, /, *, include_version: bool = True) -> bool:
-        name = "InstallVulkan" if not include_version else f"InstallVulkan-{version}"
-        path = str(installer_path / "Contents" / "MacOS" / name)
+    def macos_install(installer_path: Path, /) -> bool:
+        installer_path = installer_path / "Contents" / "MacOS"
+        glob1 = list(installer_path.glob("*"))
+        if not glob1:
+            Convoy.exit_error(
+                f"The path <underline>{installer_path}</underline> is empty. Cannot continue with the installation."
+            )
+
+        path = str(glob1[0])
         vulkan_sdk = Path.home() / "VulkanSDK" / str(version)
         if not Convoy.run_process_success(
             [
@@ -837,17 +843,13 @@ def try_install_vulkan(version: VulkanVersion, /) -> bool:
         extract_file(download_path, extract_path)
 
         if Convoy.is_macos:
-            filepath = extract_path / f"InstallVulkan-{version}.app"
-            include_version = True
-            if not filepath.exists():
-                filepath = vendor / f"InstallVulkan-{version}.app"
-            if not filepath.exists():
-                filepath = extract_path / "InstallVulkan.app"
-                include_version = False
-            if not filepath.exists():
-                filepath = vendor / "InstallVulkan.app"
+            glob = list(extract_path.glob("*"))
+            if not glob:
+                Convoy.exit_error(
+                    f"The path <underline>{extract_path}</underline> is empty. Cannot continue with the installation."
+                )
 
-            return macos_install(filepath, include_version=include_version)
+            return macos_install(glob[0])
 
         if Convoy.is_linux:
 
