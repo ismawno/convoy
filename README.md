@@ -5,29 +5,25 @@ Convoy is a small collection of python scripts I have developed that help me wit
 ## Features
 Convoy focuses in self contained scripts that can be run from the command line. It is not a library or a framework, but rather a collection of scripts that can be used to automate common tasks. The main features are:
 
-- **Code generation**: Small scripts that help generating code at build time, such as reflection code. Can be found in the [codegen](https://github.com/ismawno/convoy/tree/main/src/codegen) folder.
+- **Code generation**: Small scripts that help generating code at build time. Can be found in the [codegen](https://github.com/ismawno/convoy/tree/main/src/codegen) folder.
 
-- **Build, Setup & Installation utilities**: The [setup](https://github.com/ismawno/convoy/tree/main/src/codegen) folder contains scripts that help with the build and setup process of the project. This includes installing dependencies, setting up the environment, and generating configuration files. These scripts are designed for C/C++ projects.
+- **Build, Setup & Installation utilities**: The [setup](https://github.com/ismawno/convoy/tree/main/src/setup) folder contains scripts that help with the build and setup process of the project. This includes installing dependencies, setting up the environment, and generating configuration files. These scripts are designed for C/C++ projects.
 
 Almost every script acts as a command line executable with parameters. Execute it with the `-h` or `--help` flag to see the available options and a small description of what they do.
-
-### Code generation scripts
-
-For me, one of the biggest missing features of C++ is reflection. This is a feature that allows you to inspect the structure of your code at runtime, and it is something that is available in many other languages. The code generation scripts in this repository are meant to help with this. They generate code that can be used to implement reflection in C++ by scanning `.hpp` or `.cpp` files of your choosing, and generating reflection code for every marked `class` or `struct` they see. The script [reflect.py](https://github.com/ismawno/toolkit/blob/main/codegen/cpp/reflect.py) is a command line script that is in charge of this functionality. Use the `-h` or `--help` flag to learn more about its capabilities.
-
-One other very important feature code generation grants is automatic serialization. It is true that this feature can be built on top of the generated reflection code, but some handy features will be missing or clanky to implement, such as marking fields to be deserialized optionally and overriding types. In my case, it was easier to generate the code directly with [serialize.py](https://github.com/ismawno/toolkit/blob/main/codegen/cpp/serialize.py). The only backend implemented for now is yaml, which uses [yaml-cpp](https://github.com/jbeder/yaml-cpp), so to use serialization it must be added as a dependency.
-
-The parsing and class/struct organization code is common for both code generation strategies, and can be expanded to include more language features. [toolkit](https://github.com/ismawno/toolkit) is required as a dependency to use code generation, as the generated code will contain explicit uses of the library.
 
 ### Build, Setup & Installation utilities
 
 When creating projects, I like them to be easy to setup and build. With third-party software, however, this can become annoying, especially when not all dependency can be pulled automatically with `CMake`. And that assuming `CMake` itself is not missing, which is not as unusual (especially when I want non-programming friends to check out what I do). That is why the scripts under this section exist.
 
-#### Installation scripts
+### Code generation utilities
+
+Code generation is a recurring theme especially in languages where the program data is very inaccessible, such as C++. These utilities include generators (currently only C/C++ is supported) and parsers to inspect type information at compile time and generate code accordingly.
+
+### Installation scripts
 
 When it comes to installing required third party programs such as the `Vulkan SDK`, `CMake` or even `Visual Studio`, I would like those steps to be automated. The [setup.py](https://github.com/ismawno/convoy/blob/main/src/setup/setup.py) command line script does just that. It is a cross-platform installation script that can be used to install commonly required dependencies for graphics projects. I don't like obscure, non-localized build/installation scripts that install hundreds of dependencies without even asking, so I have designed these to be especially verbose and ask the user everytime a command is going to be issued through the terminal (this behaviour can be enabled/disabled with the appropiate arguments). It also supports uninstallation of the software it explicitly installed. Use the `-h` or `--help` flag to learn more about its capabilities.
 
-#### Building scripts
+### Building scripts
 
 Because of how much I hate how the CMake cache works, I have also implemented some python building scripts in the [setup](https://github.com/ismawno/convoy/tree/main/src/setup) folder. The most relevant one is the [build.py](https://github.com/ismawno/convoy/blob/main/src/setup/build.py).
 
